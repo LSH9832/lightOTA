@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>软件OTA系统</title>
+    <link rel="stylesheet" href="common.css">
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <nav class="navbar">
+        <div class="navbar-brand">
+            <a class="no-underline" href="/ota" style="color:black">软件OTA系统</a>
+        </div>
+        <!-- 右侧链接区域 -->
+        <div class="navbar-nav">
+            <a class="nav-item no-underline" href="/ota/softwares.html">软件版本管理</a>
+            <a class="nav-item no-underline" href="/ota/ota_files.html">OTA文件管理</a>
+            <a class="nav-item no-underline" href="/ota/upload.html">OTA文件上传</a>
+            <!-- <a class="nav-item no-underline" href="/ota">系统首页</a> -->
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1 class="page-title">软件版本管理</h1>
+        <div class="split-layout">
+            <!-- 左侧表格面板 -->
+            <div class="left-panel">
+                <h2 class="panel-title">已安装软件</h2>
+                <div class="card">
+                    <div class="table-container">
+                        <table id="softwareTable">
+                            <thead>
+                                <tr>
+                                    <th class="col-index">序号</th>
+                                    <th style="width:40%">软件名称</th>
+                                    <th style="width:20%">当前版本</th>
+                                    <th style="width:20%">版本号设置</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody">
+                                <tr>
+                                    <td colspan="4" class="loading">加载中...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top:5px; padding-bottom:0px; justify-content:flex-start;">
+                        <button id="saveAllBtn" class="btn btn-success">保存更改</button>
+                        <!-- <button id="uploadBtn" class="btn btn-primary" hidden>上传OTA文件</button> -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧服务器信息输出区域 固定id:ret_message_area -->
+            <div class="right-panel">
+                <h2 class="panel-title">服务器返回信息</h2>
+                <div class="card">
+                    <div class="ret_message_area" id="ret_message_area"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <div class="footer">
+        <a href="https://github.com/LSH9832">LSH9832</a> ©<script>document.write(new Date().getFullYear());</script>
+    </div>
+
+    <script src="softwares.js"></script>
+</body>
+</html>

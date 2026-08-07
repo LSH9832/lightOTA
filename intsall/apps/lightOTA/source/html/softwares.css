@@ -1,0 +1,115 @@
+/* 全局基础样式，对齐ota_files.html风格 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Microsoft Yahei", sans-serif;
+}
+body {
+    background-color: #f5f7fa;
+    padding: 20px;
+}
+.container {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+h2, h3 {
+    color: #2d3748;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+/* 左右等分核心布局 */
+.split-wrap {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+}
+.left-panel, .right-panel {
+    flex: 1;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    min-height: 600px;
+}
+
+/* 表格样式 */
+#softwareTable {
+    width: 100%;
+    border-collapse: collapse;
+}
+#softwareTable th, #softwareTable td {
+    border: 1px solid #e2e8f0;
+    padding: 10px 12px;
+    text-align: center;
+    vertical-align: middle;
+}
+#softwareTable th {
+    background-color: #4299e1;
+    color: #fff;
+    font-weight: normal;
+}
+#softwareTable tbody tr:nth-child(even) {
+    background-color: #f8fafc;
+}
+.loading-text {
+    color: #718096;
+    padding: 30px;
+}
+
+/* 版本行容器 */
+.version-item {
+    margin: 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+}
+
+/* 版本切换按钮三色区分 */
+.btn-upgrade {
+    background-color: #48bb78;
+    color: #fff;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.btn-downgrade {
+    background-color: #ecc94b;
+    color: #2d3748;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.btn-same {
+    background-color: #a0aec0;
+    color: #fff;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.btn-upgrade:hover { opacity: 0.85; }
+.btn-downgrade:hover { opacity: 0.85; }
+.btn-same:hover { opacity: 0.85; }
+
+/* 右侧消息区域样式 */
+#ret_message_area .msg-content {
+    min-height: 500px;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    font-size: 14px;
+}
+.msg-success {
+    color: #38a169;
+}
+.msg-error {
+    color: #e53e3e;
+}
