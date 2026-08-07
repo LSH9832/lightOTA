@@ -1,0 +1,878 @@
+#! /usr/bin/python3
+import os
+import pwd
+import os.path as osp
+from glob import glob
+import argparse
+import json
+import shutil
+import zipfile
+import time
+from copy import deepcopy
+import stat
+try:
+    import argcomplete
+    argcomplete_loaded = True
+except:
+    argcomplete_loaded = False
+
+OTA_PATH = osp.join("/home", pwd.getpwuid(os.geteuid()).pw_name, ".ota")
+os.makedirs(osp.join(OTA_PATH, "sysroots"), exist_ok=True)
+OTA_SYSROOTS = [osp.basename(path) for path in glob(osp.join(OTA_PATH, "sysroots", "*")) if osp.isdir(path) and osp.isfile(osp.join(path, ".sysrootconfig"))]
+OTA_SOFT_PATH = os.getcwd()
+OTA_SOFT_CFG_PATH = osp.join(OTA_SOFT_PATH, ".softota")
+OTA_SOFT_CFG_FILE = osp.join(OTA_SOFT_PATH, ".softota", "config.json")
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description="软件OTA包生成工具")
+
+    sp = parser.add_subparsers(dest="mode", help="mode")
+    sp_sysroot = sp.add_parser("sysroot", help="system root settings", description=f"system root settings")
+
+    sp_sysroot_cmd = sp_sysroot.add_subparsers(dest="cmd", help="sysroot command")
+    sp_sysroot_list = sp_sysroot_cmd.add_parser("list", help="list all sysroot")
+    sp_sysroot_info = sp_sysroot_cmd.add_parser("info", help="get information of one exist sysroot")
+    sp_sysroot_info.add_argument("name", type=str, help="SYSROOT名称", choices=OTA_SYSROOTS)
+
+    sp_sysroot_add = sp_sysroot_cmd.add_parser("create", help="add one sysroot")
+    sp_sysroot_add.add_argument("name", type=str, help="SYSROOT名称")
+    sp_sysroot_add.add_argument("path", type=str, help="SYSROOT路径")
+    sp_sysroot_add.add_argument("--ld-library-path", type=str, default=[], nargs="+", help="添加额外的动态库路径")
+
+    sp_sysroot_modify = sp_sysroot_cmd.add_parser("modify", help="add one sysroot")
+    sp_sysroot_modify.add_argument("name", type=str, help="SYSROOT名称", choices=OTA_SYSROOTS)
+    # sp_sysroot_modify.add_argument("paths", type=str, nargs="+")
+
+    sp_sysroot_pack = sp_sysroot_cmd.add_parser("pack", help="pack sysroot lib")
+    sp_sysroot_pack.add_argument("name", type=str, help="SYSROOT名称", choices=OTA_SYSROOTS)
+    sp_sysroot_pack.add_argument("version", type=str, help="通用依赖库版本号")
+    sp_sysroot_pack.add_argument("-i", "--intro", type=str, default=None, help="版本说明")
+    sp_sysroot_pack.add_argument("-if", "--intro-file", type=str, default=None, help="版本说明文件")
+    sp_sysroot_pack.add_argument("--only-pack-new", action="store_true", help="仅打包从上次打包开始更新过的文件")
+
+    sp_sysroot_delete = sp_sysroot_cmd.add_parser("delete", help="delete one sysroot")
+    sp_sysroot_delete.add_argument("name", type=str, help="SYSROOT名称")
+
+    sp_software = sp.add_parser("software", help="system root settings", description=f"system root settings")
+    sp_software_cmd = sp_software.add_subparsers(dest="cmd", help="software command")
+
+    sp_software_init = sp_software_cmd.add_parser("init")
+    sp_software_init.add_argument("-s", "--system-name", type=str, default=None)
+
+    sp_software_add = sp_software_cmd.add_parser("add")
+    sp_software_add.add_argument("name", type=str, help="软件名称")
+    sp_software_add.add_argument("en_name", type=str, help="软件英文名称，不要含有中文字符")
+    sp_software_add.add_argument("-e", "--executable-files", type=str, nargs="+", required=True, help="软件包含的所有可执行文件")
+    sp_software_add.add_argument("-l", "--libraries", type=str, nargs="+", default=[], help="必须要打包的动态库文件")
+    sp_software_add.add_argument("-p", "--pack", type=str, default=[], nargs="+", help="其他额外需要一起打包的文件/文件夹，比如配置文件等，格式为“<文件/文件夹路径>:<打包后相对于程序运行目录的路径>”（即用冒号隔开）")
+    sp_software_add.add_argument("-r", "--rank", type=int, default=None, help="软件自启动优先级（0~9）,如果不在此范围内则视为最低优先级")
+
+    sp_software_list = sp_software_cmd.add_parser("list")
+    sp_software_list.add_argument("-c", "--cn", action="store_true", help="查看中文名称，默认为英文")
+
+    CHOISES = []
+    if osp.isfile(OTA_SOFT_CFG_FILE):
+        with open(OTA_SOFT_CFG_FILE) as f:
+            cfg = json.load(f)
+            CHOISES = list(cfg["softwares"].keys())
+    sp_software_info = sp_software_cmd.add_parser("info")
+    sp_software_info.add_argument("name", type=str, choices=CHOISES)
+    sp_software_info.add_argument("--check", action="store_true", help="检查自启动配置文件是否存在，检查所有依赖动态库是否存在并显示")
+
+    sp_software_delete = sp_software_cmd.add_parser("delete")
+    sp_software_delete.add_argument("name", type=str, choices=CHOISES)
+
+    sp_software_pack = sp_software_cmd.add_parser("pack")
+    sp_software_pack.add_argument("name", type=str, choices=CHOISES)
+    sp_software_pack.add_argument("version", type=str, help="版本号")
+    sp_software_pack.add_argument("-i", "--intro", type=str, default=None, help="版本说明")
+    sp_software_pack.add_argument("-if", "--intro-file", type=str, default=None, help="版本说明文件")
+    sp_software_pack.add_argument("--no-extra-pack", action="store_true", help="不打包额外的文件")
+    sp_software_pack.add_argument("--only-pack-new", action="store_true", help="只打包从上次打包起更新过的文件")
+
+    if argcomplete_loaded:
+        argcomplete.autocomplete(parser)
+
+    return parser.parse_args()
+
+SKIP_FILES = [
+    "libstdc++.so",
+    "libgcc_s.so",
+    "libc.so",
+    "ld-linux-aarch64.so",
+    "ld-linux-x86-64.so",
+    "libpthread.so",
+    "libgomp.so",
+    "libgfortran.so",
+    "libobjc.so",
+    "libm.so",
+    "libssp.so",
+    "libz.so",
+    "libthread_db.so",
+    "libBrokenLocale.so",
+    "libmemusage.so",
+    "libdl.so",
+    "librt.so",
+    "libutil.so",
+    "libanl.so",
+    "libresolv.so",
+    "libanl.so",
+    "libnsl.so",
+    "libnss_files.so",
+    "libnss_dns.so",
+    "libnss_compat.so",
+    "libnss_nis.so",
+    "libnss_hesiod.so",
+    "libnss_db.so"
+]
+
+def show(color="", *args, **kwargs):
+    if len(args) == 1:
+        print(color + args[0] + "\033[0m", **kwargs)
+    elif len(args) == 2:
+        print(color + args[0], args[1] + "\033[0m", **kwargs)
+    elif len(args):
+        print(color + args[0], *args[1:-1], args[-1] + "\033[0m", **kwargs)
+    else:
+        print(**kwargs)
+
+
+def info(*args, **kwargs):
+    show("\033[32m", *args, **kwargs)
+    
+def warn(*args, **kwargs):
+    show("\033[33m", *args, **kwargs)
+
+def error(*args, **kwargs):
+    show("\033[31m", *args, **kwargs)
+
+check_enabled = True
+try:
+    from elftools.elf.elffile import ELFFile
+    elftools_loaded = True
+except:
+    elftools_loaded = False
+    warn("elftools库未安装，改用系统readelf工具")
+    if not osp.isfile("/usr/bin/readelf"):
+        check_enabled = False
+        error("未找到系统readelf工具！无法使用打包功能和检查功能！")
+    time.sleep(1)
+
+
+def get_dependencies(file_path):
+    if elftools_loaded:
+        dependencies = []
+        with open(file_path, 'rb') as f:
+            elf_file = ELFFile(f)
+            # 获取动态链接段（Dynamic Section），只有动态链接的ELF才有依赖库信息
+            dynamic_section = elf_file.get_section_by_name('.dynamic')
+            if not dynamic_section:
+                return dependencies # 静态编译的ELF没有动态段，无依赖库
+            # 遍历动态段的所有条目，筛选DT_NEEDED类型的依赖项
+            for tag in dynamic_section.iter_tags():
+                if tag.entry.d_tag == 'DT_NEEDED':
+                    dependencies.append(tag.needed)
+        return dependencies
+    return os.popen(f"readelf -d {file_path} | grep NEEDED | awk '{{print $5}}' | tr -d '[]'").read().split("\n")[:-1]
+
+def get_location(file, path, recursive=False, sysroot=None):
+    if sysroot is not None:
+        path = sysroot + path
+    if recursive:
+        matches = glob(osp.join(path, "**", file), recursive=True)
+        if len(matches):
+            location = osp.abspath(matches[0])
+            return True, location
+    elif osp.isfile(osp.join(path, file)):
+        location = osp.abspath(osp.join(path, file))
+        return True, location
+    return False, None
+
+def isSkipFile(filename: str):
+    for f in SKIP_FILES:
+        if filename.startswith(f):
+            return True
+    return False
+
+
+def getDeps(file_path, check_path: list, sys_root="/", file_dict: dict = None, check_cwd=True):
+    if file_dict is None:
+        file_dict = {
+            "specific": {},
+            "common": {},
+            "ignore": {},
+            "unknown": {}
+        }
+    files = get_dependencies(file_path)
+    # if check_cwd:
+    #     info(files)
+    cpath = deepcopy(check_path[1:])
+    for file in files:
+        so_type = "unknown"
+
+        if file in file_dict["common"] or file in file_dict["specific"] or file in file_dict["ignore"] or file in file_dict["unknown"]:
+            continue
+        location = None
+        success = False
+        
+        success, location = get_location(file, check_path[0], False)
+        if success:
+            so_type = "common"
+        if not success:
+            for i, path in enumerate(cpath):
+                success, location = get_location(file, path, False, sys_root)
+                if success:
+                    so_type = "common"
+                    if i:
+                        cur_path = cpath.pop(i)
+                        cpath = [cur_path] + cpath
+                    break
+        if not success and check_cwd:
+            success, location = get_location(file, "./", True)
+            if success:
+                so_type = "specific"
+
+        if success and isSkipFile(file):
+            so_type = "ignore"
+
+        if file_dict[so_type].get(file, None) is None:
+            file_dict[so_type][file] = location
+        if success and not isSkipFile(file):
+            # info(osp.basename(file_path), "->",osp.basename(location))
+            
+            file_dict = getDeps(location, check_path, sys_root, file_dict, so_type == "specific")
+    return file_dict
+
+
+def sysroot_create(args):
+    # info(args.cmd, args.name, args.path, args.ld_library_path)
+    if args.name in OTA_SYSROOTS:
+        warn(f"系统根路径名称'{args.name}'已存在，不得重复创建！")
+        return False
+
+    sysroot_ota_path = osp.join(OTA_PATH, "sysroots", args.name)
+    if osp.isdir(sysroot_ota_path):
+        warn(f"系统路径已经创建！请检查'{OTA_PATH}'路径配置是否被手动修改！")
+        return False
+
+    if not osp.isdir(args.path):
+        error(f"系统根目录{args.path}不存在！")
+        return False
+    
+    os.makedirs(osp.join(sysroot_ota_path, "lib"), exist_ok=True)
+    config = {
+        "path": osp.abspath(args.path),
+        "check_path": [
+            [osp.abspath(osp.join(sysroot_ota_path, "lib")), False],
+            ["/lib64", False],
+            ["/usr/lib64", False],
+            ["/lib", False],
+            ["/usr/lib", False],
+            ["/lib/aarch64-linux-gnu", False],
+            ["/lib/x86_64-linux-gnu", False],
+            ["/usr/local/lib", False],
+            # ["/usr/hobot/lib", False],
+            ["/usr/lib/aarch64-linux-gnu", False],
+            ["/usr/lib/x86_64-linux-gnu", False],
+            # ["/opt/lightdds/lib", True]
+        ],
+        "extra_path": [osp.abspath(p) for p in args.ld_library_path]
+    }
+
+    with open(osp.join(sysroot_ota_path, ".sysrootconfig"), "w") as f:
+        json.dump(config, f)
+    info(f"已创建'{args.name}'系统根目录配置")
+    return True
+
+    
+def sysroot_list(args):
+    for i, name in enumerate(OTA_SYSROOTS):
+        print(f"{i+1}. {name}")
+    return True
+    
+def sysroot_info(args):
+    cfg = {}
+    with open(osp.join(OTA_PATH, "sysroots", args.name, ".sysrootconfig")) as f:
+        cfg = json.load(f)
+    # info(cfg)
+    search_path = ""
+    i = 0
+    for i, (p, _) in enumerate(cfg["check_path"]):
+        if i == 0:    # 跳过要聚合的目录
+            continue
+        search_path += f"{i}. {p}\n"
+    start_i = i
+    for i, p in enumerate(cfg["extra_path"]):
+        search_path += f"{start_i+i+1}. /{osp.relpath(p, cfg['path'])}\n"
+    print(f"""系统名称: {args.name}
+根目录: {cfg["path"]}
+动态库查询路径：
+{search_path[:-1]}""")
+    return True
+    
+    
+def sysroot_delete(args):
+    print(f"确定要删除{args.name}吗？")
+    w = input("[y/N] >>> ").lower()
+    while w not in ["y", "n", "yes", "no", ""]:
+        error("无效输入，请重新输入")
+        w = input("[y/N] >>> ").lower()
+    if w in ["y", "yes"]:
+        shutil.rmtree(osp.join(OTA_PATH, "sysroots", args.name))
+        info("已删除")
+        return True
+    print("删除操作已取消")
+    return False
+
+def sysroot_modify(args):
+    print(f"请选择要对系统{args.name}进行的更改\n[1] 添加动态库查询路径\n[2] 生成交叉编译工具链.cmake文件\n[3] 退出")
+    res = input("请输入序号1~3: ")
+    while not res.isdigit():
+        error("输入错误！")
+        res = input("请输入序号1~3: ")
+    while not int(res) in [1, 2, 3]:
+        error("输入错误！")
+        res = input("请输入序号1~3: ")
+    res = int(res)
+    sysroot_ota_path = osp.join(OTA_PATH, "sysroots", args.name)
+    if res == 3:
+        print("已退出")
+        return False
+    elif res == 1:
+        paths = []
+        while True:
+            paths = input("请输入额外的动态库查询路径，多个路径用空格隔开，输入exit退出\n>>> ").split()
+
+            if len(paths) == 1 and paths[0] == "exit":
+                print("已退出")
+                return False
+
+            all_path_exist = True
+            for path in paths:
+                if not osp.isdir(path):
+                    error(f"路径'{path}'不存在！")
+                    all_path_exist = False
+            if not all_path_exist:
+                print("请重新输入所有路径")
+                continue
+            break
+        
+        cfg = {}
+
+        success = False
+        with open(osp.join(sysroot_ota_path, ".sysrootconfig")) as f:
+            cfg = json.load(f)
+            cfg["extra_path"].extend([osp.abspath(p) for p in paths])
+            success = True
+        if success:
+            with open(osp.join(sysroot_ota_path, ".sysrootconfig"), "w") as f:
+                json.dump(cfg, f)
+                info(f"系统'{args.name}'动态库查询路径已更新")
+                return True
+        else:
+            error(f"打开配置文件失败，请检查{sysroot_ota_path}")
+            return False
+    elif res == 2:
+        success = False
+        with open(osp.join(sysroot_ota_path, ".sysrootconfig")) as f:
+            cfg = json.load(f)
+            success = True
+        if not success:
+            error(f"打开配置文件失败，请检查{sysroot_ota_path}")
+            return False
+        
+        arch_id = input("请输入架构编号（1.arm, 2.aarch64, 3.x86_64, 4.mips）\n>>> ")
+        while not arch_id.isdigit() or int(arch_id) not in [1,2,3,4]:
+            if arch_id == "exit":
+                print("已退出")
+                return False
+            error("输入错误！")
+            arch_id = input("请输入架构编号（1.arm, 2.aarch64, 3.x86_64, 4.mips）\n>>> ")
+        arch = ["arm", "aarch64", "x86_64", "mips"][int(arch_id)-1]
+        c_path = input("请输入C编译器路径（如/usr/bin/aarch64-linux-gnu-gcc）\n>>> ")
+        while not osp.isfile(c_path):
+            if c_path == "exit":
+                print("已退出")
+                return False
+            error("输入错误！")
+            c_path = input("请输入C编译器路径（如/usr/bin/aarch64-linux-gnu-gcc）\n>>> ")
+        cpp_path = input("请输入C++编译器路径（如/usr/bin/aarch64-linux-gnu-g++）\n>>> ")
+        while not osp.isfile(cpp_path):
+            if cpp_path == "exit":
+                print("已退出")
+                return False
+            error("输入错误！")
+            cpp_path = input("请输入C++编译器路径（如/usr/bin/aarch64-linux-gnu-g++）\n>>> ")
+
+        cmake_content = f"""
+# 1. 指定目标系统名称 (必须设置，否则CMake不会进入交叉编译模式)
+# 常见值: Linux, Windows, Android, iOS, Generic(裸机)
+set(CMAKE_SYSTEM_NAME Linux)
+
+# 2. 指定目标处理器架构
+# 常见值: arm, aarch64, x86_64, mips 等
+set(CMAKE_SYSTEM_PROCESSOR {arch})
+
+# 3. 指定交叉编译器路径 (建议使用绝对路径或确保在PATH中)
+# 例如 ARM Linux 的 gcc/g++
+set(CMAKE_C_COMPILER {c_path})
+set(CMAKE_CXX_COMPILER {cpp_path})
+
+# 4. 指定目标系统的 Sysroot (可选但推荐)
+# Sysroot 包含了目标平台的头文件和库文件
+set(CMAKE_SYSROOT {cfg["path"]})
+
+# 5. 配置查找行为 (关键：防止链接到宿主机的库)
+# 查找程序(如python, perl等构建工具)时，只在宿主机找
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+# 查找库文件时，只在目标环境(sysroot)中找
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+# 查找头文件时，只在目标环境(sysroot)中找
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+# 查找包配置文件时，只在目标环境中找
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+"""
+        cmake_path = osp.join(sysroot_ota_path, f"{arch}-linux.cmake")
+        with open(cmake_path, "w") as f:
+            f.write(cmake_content)
+        info(f"已生成: {cmake_path}")
+
+def sysroot_pack(args):
+    cfg = {}
+    with open(osp.join(OTA_PATH, "sysroots", args.name, ".sysrootconfig")) as f:
+        cfg = json.load(f)
+    # print(cfg)
+    pack_time = time.time()
+    last_pack_timestamp = cfg.get("last_pack_timestamp", 0)
+    ota_file = osp.join(OTA_PATH, "sysroots", args.name, f"{args.name}-通用依赖库-{args.version}.ota")
+    lib_files = glob(osp.join(OTA_PATH, "sysroots", args.name, "lib", "*"))
+    lib_files = [lib_file for lib_file in lib_files if (not args.only_pack_new or osp.getmtime(lib_file) > last_pack_timestamp)]
+    if not len(lib_files):
+        warn("无更新，无需打包")
+        return False
+    print(f"共{len(lib_files)}个动态库文件")
+    otaconfig = {
+        "name": ["通用依赖库"],
+        "version": [args.version],
+        "root_dir": "/",
+        "timestamp": [time.time()],
+        "introduction": [("无说明" if args.intro_file is None or not osp.isfile(args.intro_file) else 
+                            open(args.intro_file).read().replace("\n","<br>")) 
+                            if args.intro is None else args.intro]
+    }
+
+    if args.only_pack_new:
+        if osp.isfile(ota_file):
+            warn(f"已存在 {ota_file} ！鉴于本次打包仅包含更新后的文件，请更换版本号后打包或全量打包。")
+            return False
+
+    files_already_pack = [".otaconfig"]
+    with zipfile.ZipFile(ota_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        zipf.writestr(".otaconfig", json.dumps(otaconfig))
+        for i, file_path in enumerate(lib_files):
+            arcname = f"apps/common_lib/{osp.basename(file_path)}"
+            if arcname not in files_already_pack:
+                zipf.write(file_path, arcname)
+                files_already_pack.append(arcname)
+                info(f"\033[K\033[1000C\r({i+1}/{len(lib_files)}) 已打包: {arcname}", end="\033[K\033[1000C")
+        print()
+    with open(osp.join(OTA_PATH, "sysroots", args.name, ".sysrootconfig"), "w") as f:
+        cfg["last_pack_timestamp"] = pack_time
+        json.dump(cfg, f)
+    info(f"文件 {ota_file} 打包完成")
+
+
+def software_init(args):
+    if osp.isdir(OTA_SOFT_CFG_PATH):
+        warn("本文件夹已初始化！")
+        return False
+    
+    if args.system_name is not None and args.system_name in OTA_SYSROOTS:
+        sys_name = args.system_name
+    else:
+        if args.system_name is not None:
+            error(f"找不到名为“{args.system_name}”系统")
+        available_sys_str = ""
+        for i, sys in enumerate(OTA_SYSROOTS):
+            available_sys_str += f"{i+1}. {sys}\n"
+        sys_name = input(f"可选系统\n{available_sys_str}请输入序号：")
+        while not sys_name.isdigit() or not 1<=int(sys_name)<=len(OTA_SYSROOTS):
+            if sys_name == "exit":
+                print("已退出")
+                return False
+            error("输入错误！")
+            sys_name = input(f"可选系统\n{available_sys_str}请输入序号：")
+        sys_name = OTA_SYSROOTS[int(sys_name)-1]
+
+        cfg = {
+            "sys_name": sys_name,
+            "softwares": {}
+        }
+
+    os.makedirs(OTA_SOFT_CFG_PATH)
+    with open(OTA_SOFT_CFG_FILE, "w") as f:
+        json.dump(cfg, f, indent=4)
+    info("初始化完成")
+
+    return True
+
+
+def software_add(args):
+    if not osp.isfile(OTA_SOFT_CFG_FILE):
+        error("当前文件夹未进行OTA初始化!")
+        return False
+    with open(OTA_SOFT_CFG_FILE) as f:
+        cfg = json.load(f)
+
+    if args.name == "通用依赖库":
+        print(f"软件名不得使用 通用依赖库 ！请使用其他名字！")
+        return False
+
+    if args.en_name == "common_lib":
+        print(f"软件英文名不得使用 common_lib ！请使用其他名字！")
+        return False
+
+    if args.en_name in cfg["softwares"]:
+        warn(f"软件“{args.name}”已存在！无需添加")
+        return False
+
+
+    pack = {}
+    # info(args.pack)
+    for p in args.pack:
+        ps = p.split(":")
+        if len(ps) != 2:
+            error(f"输入有误：{p}")
+            return False
+        pack[ps[0]] = osp.abspath(osp.join("/apps", args.en_name, ps[1]))
+    args.rank = -1 if (args.rank is None or args.rank > 9 or args.rank < 0) else args.rank
+    soft_cfg = {
+        "name": args.name,
+        "exes": [osp.abspath(exe) for exe in args.executable_files],
+        "libs": [osp.abspath(lib) for lib in args.libraries],
+        "pack": pack,
+        "rank": args.rank
+    }
+
+    launch_yaml_str = f"""# -------------------------------- global_environ ---------------------------------
+
+global_environ:
+  WORK_DIR: /apps/{args.en_name}
+  DDS_DOMAIN_ID: 0
+  LD_LIBRARY_PATH: 
+    - $WORK_DIR/lib
+    - /apps/common_lib
+
+# -------------------------------- global_command ---------------------------------
+
+# 软件启动前运行的bash命令，可不填
+# global_command:
+#   # 只运行一次的指令，有可执行程序退出后重新拉起时不会运行，可不填
+#   run_only_once: 
+#     - echo [$(date)] start ir track subprogram >> $ROOT_DIR/log/run.log
+#   # 每次有可执行程序退出后重新拉起时都会重新运行，可不填
+#   run_every_time:
+#     - cmd=$($WORK_DIR/param2env --files $ROOT_DIR/config/web/*.yaml);$cmd
+
+# ----- DO NOT CREATE ANY NODE WITH KEY 'global_environ' OR 'global_command' ------
+"""
+    for exe in args.executable_files:
+        launch_yaml_str += f"""
+{osp.basename(exe)}_node:
+  work_dir: $WORK_DIR
+  command: $WORK_DIR/bin/{osp.basename(exe)}
+  run_once: false    # run only once, will not restart if crashed
+  kill_keyword: [{osp.basename(exe)}]
+  # posArgs:     # 命令行位置参数
+  #   0: XXX
+  #   1: XXX
+  # optArgs:     # 命令行可选参数
+  #   --config: $WORK_DIR/config/{osp.basename(exe)}.json
+  #   --debug: true     # 布尔值，为真则添加参数名称
+"""
+
+    cfg["softwares"][args.en_name] = soft_cfg
+    with open(OTA_SOFT_CFG_FILE, "w") as f:
+        json.dump(cfg, f, indent=4)
+
+    self_launch_file = osp.join(OTA_SOFT_CFG_PATH, f"{(str(args.rank) + '.') if args.rank >= 0 else ''}{args.en_name}.yaml")
+    with open(self_launch_file, "w") as f:
+        f.write(launch_yaml_str)
+
+    info(f"软件“{args.name}({args.en_name})”已添加，请修改自启动配置文件 {self_launch_file} 后再打包")
+
+
+def software_list(args):
+    if not osp.isfile(OTA_SOFT_CFG_FILE):
+        error("当前文件夹未进行OTA初始化!")
+        return False
+    with open(OTA_SOFT_CFG_FILE) as f:
+        cfg = json.load(f)
+
+    for i, (k, v) in enumerate(cfg["softwares"].items()):
+        print(f"{i+1}. {(v['name'] + f'({k})') if args.cn else k}")
+    return True
+
+
+def software_info(args, pack=False, only_new=False, no_extra=False, version=""):
+    if not check_enabled:
+        # error("程序退出")
+        return False, {}
+    if pack:
+        args.check = True
+    pack_time = time.time()
+    
+    check_pass = True
+    if not osp.isfile(OTA_SOFT_CFG_FILE):
+        error("当前文件夹未进行OTA初始化!")
+        return False
+    with open(OTA_SOFT_CFG_FILE) as f:
+        cfg = json.load(f)
+
+    if args.name not in cfg["softwares"]:
+        error(f"不存在英文名为{args.name}的软件！")
+        return False
+
+    soft_cfg = cfg["softwares"][args.name]
+
+    ret = {
+        "name": soft_cfg['name'],
+        "clib_path": osp.join(OTA_PATH, "sysroots", cfg["sys_name"]),
+        "file_name": f"{soft_cfg['name']}-{version}{'-new' if only_new else ('-lite' if no_extra else '-full')}.ota",
+        "pack": {},
+        "common_lib": [],
+        "soft_cfg": cfg
+    }
+
+    print(f"软件名称：\033[32m{soft_cfg['name']}\033[0m(\033[32m{args.name}\033[0m)")
+    print(f"自启动优先级", soft_cfg["rank"] if soft_cfg["rank"] > 0 else "最低优先级")
+    print(f"可执行文件：")
+    if soft_cfg.get("last_pack_timestamp", None) is None:
+        soft_cfg["last_pack_timestamp"] = 0
+
+    last_pack_time = soft_cfg["last_pack_timestamp"]
+    for i, n in enumerate(soft_cfg["exes"]):
+        info(f"{i+1}. {n}")
+        if pack:
+            if osp.getmtime(n) > last_pack_time or not only_new:
+                ret["pack"][n] = f"/apps/{args.name}/bin/{osp.basename(n)}"
+        if args.check:
+            if not osp.isfile(n):
+                print(f"\033[31m[错误] 可执行文件“{n}”不存在！\033[0m")
+                check_pass = False
+    if len(soft_cfg["libs"]):
+        print("动态库（强制打包）：")
+        for i, n in enumerate(soft_cfg["libs"]):
+            info(f"{i+1}. {n}")
+            if pack:
+                if osp.getmtime(n) > last_pack_time or not only_new:
+                    ret["pack"][n] = f"/apps/{args.name}/lib/{osp.basename(n)}"
+            if args.check:
+                if not osp.isfile(n):
+                    print(f"\033[31m[错误] 动态库“{n}”不存在！\033[0m")
+                    check_pass = False
+
+    self_launch_config_path = osp.join(OTA_SOFT_CFG_PATH, f"{(str(soft_cfg['rank']) + '.') if soft_cfg['rank'] >= 0 else ''}{args.name}.yaml")
+    print(f"自启动配置文件： \033[32m{self_launch_config_path}\033[0m")
+    if pack:
+        if osp.getmtime(self_launch_config_path) > last_pack_time or not only_new:
+            ret["pack"][self_launch_config_path] = f"/apps/startup/config/{osp.basename(self_launch_config_path)}"
+    if args.check:
+        if not osp.isfile(self_launch_config_path):
+            print(f"\033[31m[错误] 自启动配置文件“{self_launch_config_path}”不存在！\033[0m")
+            check_pass = False
+    if len(soft_cfg["pack"]):
+        print(f"打包路径/文件 -> 目标路径：")
+        for i, (k, v) in enumerate(soft_cfg["pack"].items()):
+            info(f"{i+1}.", k, "->", v)
+            if pack and not no_extra:
+                if osp.isdir(k):
+                    for extra_file in glob(osp.join(k, "**", "*"), recursive=True):
+                        if osp.getmtime(extra_file) > last_pack_time or not only_new:
+                            ret["pack"][extra_file] = osp.join(v, osp.basename(extra_file))
+                elif osp.isfile(k):
+                    if osp.getmtime(k) > last_pack_time or not only_new:
+                        ret["pack"][k] = osp.join(v, osp.basename(k))
+            if args.check:
+                if not osp.exists(k):
+                    check_pass = False
+                    print(f"\033[31m[错误] 打包位置“{k}”不存在！\033[0m")
+    
+
+    if not args.check:
+        return True
+
+    so_dict = None
+    syscfg = {}
+    sys_name = cfg["sys_name"]
+    with open(osp.join(OTA_PATH, "sysroots", sys_name, ".sysrootconfig")) as f:
+        syscfg = json.load(f)
+    sys_root = syscfg["path"]
+    search_path = []
+    for i, (p, _) in enumerate(syscfg["check_path"]):
+        search_path.append(p)
+    for i, p in enumerate(syscfg["extra_path"]):
+        search_path.append(f"/{osp.relpath(p, syscfg['path'])}")
+
+    print("-------开始检查依赖库-------")
+    # print(search_path)
+    for i, n in enumerate(soft_cfg["exes"] + soft_cfg["libs"]):
+        info(f"({i+1}/{len(soft_cfg['exes']) + len(soft_cfg['libs'])}) 正在检查： {n}")
+        so_dict = getDeps(n, search_path, sys_root, so_dict)
+    print("-------依赖库检查完毕-------")
+
+    print("软件依赖动态库：")
+    type_names = {
+        "specific": "独立依赖库（随软件一起打包）",
+        "common": f"通用依赖库（打包至“{sys_name}-通用依赖库-vX.X.X.ota”中（板端/apps/common_lib），不随软件一起打包）",
+        "ignore": "系统自带依赖（不打包）",
+        "unknown": "未找到的依赖动态库"
+    }
+    for so_type, cfg in so_dict.items():
+        if len(cfg):
+            if args.check and so_type == "unknown":
+                print("\033[31m[错误] 存在未找到的依赖动态库\033[0m")
+                check_pass = False
+            print(type_names[so_type], ":")
+        for file, location in cfg.items():
+            if so_type == "specific":
+                print(f"    \033[32m{file}\033[0m 上传至: \033[32m/apps/{args.name}/lib/{file}\033[0m")
+                if pack:
+                    if osp.getmtime(location) > last_pack_time or not only_new:
+                        ret["pack"][location] = f"/apps/{args.name}/lib/{file}"
+            else:
+                if so_type == "common":
+                    ret["common_lib"].append(location)
+                (error if location is None else info)(f"    {file} -> {'not found' if location is None else location}")
+    if args.check and check_pass:
+        info("\033[1m[成功] 检查通过")
+
+    ret["soft_cfg"]["softwares"][args.name]["last_pack_timestamp"] = pack_time
+    if pack:
+        return check_pass, ret
+    return check_pass
+
+
+def software_delete(args):
+    if not osp.isfile(OTA_SOFT_CFG_FILE):
+        error("当前文件夹未进行OTA初始化!")
+        return False
+    with open(OTA_SOFT_CFG_FILE) as f:
+        cfg = json.load(f)
+    if args.name not in cfg["softwares"]:
+        error(f"不存在英文名为{args.name}的软件！")
+        return False
+
+    if input(f"确认删除{cfg['softwares'][args.name]['name']}?\n[y/N] >>> ").lower() not in ["y", "yes"]:
+        print("已取消删除操作")
+        return False
+
+    info("1.从配置文件中删除软件信息...")
+    soft_cfg: dict = cfg["softwares"].pop(args.name)
+    with open(OTA_SOFT_CFG_FILE, "w") as f:
+        json.dump(cfg, f, indent=4)
+
+    info("2.删除自启动配置文件...")
+    self_launch_config_path = osp.join(OTA_SOFT_CFG_PATH, f"{(str(soft_cfg['rank']) + '.') if soft_cfg['rank'] >= 0 else ''}{args.name}.yaml")
+    os.remove(self_launch_config_path)
+    print("已删除")
+    return True
+
+def software_pack(args):
+    # pack_time = time.time()
+    success, cfg = software_info(args, True, args.only_pack_new, args.no_extra_pack, args.version)
+    if not success:
+        print("程序退出")
+        return False
+    if not len(cfg["pack"]):
+        warn("没有需要打包的文件，退出")
+        return False
+    print("---------------------------------------------------")
+    print("需要打包的文件：")
+    
+    for i, (k, v) in enumerate(cfg["pack"].items()):
+        info(f"{i+1}. {osp.abspath(k)} -> {v}")
+    print(f"通用依赖库数量：{len(cfg['common_lib'])}")
+    print("确认打包？")
+    if input("[y/N] >>> ").lower() in ["y", "yes"]:
+        ota_file = osp.join(OTA_SOFT_CFG_PATH, cfg["file_name"])
+        if osp.isfile(ota_file):
+            if args.only_pack_new or args.no_extra_pack:
+                warn(f"已存在 {ota_file} ！鉴于本次打包非全量打包，请更换版本号后打包或全量打包。")
+                return False
+
+            if input("已存在同名文件，是否覆盖？\n[y/N] >>> ").lower() not in ["y", "yes"]:
+                print("取消打包")
+                return False
+            os.remove(ota_file)
+        print("开始打包")
+
+        otaconfig = {
+            "name": [cfg["name"]],
+            "version": [args.version],
+            "root_dir": "/",
+            "timestamp": [time.time()],
+            "introduction": [("无说明" if args.intro_file is None or not osp.isfile(args.intro_file) else 
+                              open(args.intro_file).read().replace("\n","<br>")) 
+                              if args.intro is None else args.intro]
+        }
+
+        files_already_pack = [".otaconfig"]
+        if len(cfg["pack"]):
+            with zipfile.ZipFile(ota_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                zipf.writestr(".otaconfig", json.dumps(otaconfig))
+                for i, (file_path, arcname) in enumerate(cfg["pack"].items()):
+                    if arcname.startswith("/"):
+                        arcname = arcname[1:]
+                    if arcname not in files_already_pack:
+                        zipf.write(file_path, arcname)
+                        files_already_pack.append(arcname)
+                        info(f"\033[K\033[1000C\r({i+1}/{len(cfg['pack'])}) 已打包: {arcname}", end="\033[K\033[1000C")
+                print()
+        print("开始复制通用依赖库")
+        for i, so_file in enumerate(cfg["common_lib"]):
+            dest_so_file = osp.join(cfg["clib_path"], "lib", osp.basename(so_file))
+            info(f"\033[K\033[1000C\r({i+1}/{len(cfg['common_lib'])}) 复制 {osp.basename(so_file)} 至 {dest_so_file}", end="\033[K\033[1000C")
+            if not osp.isfile(dest_so_file):
+                shutil.copyfile(so_file, dest_so_file, follow_symlinks=False)
+                try:
+                    current_stat = os.stat(dest_so_file)
+                    current_mode = current_stat.st_mode
+                    execute_bits = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                    new_mode = current_mode | execute_bits
+                    os.chmod(dest_so_file, new_mode)
+                except:
+                    pass
+        print()
+        with open(OTA_SOFT_CFG_FILE, "w") as f:
+            json.dump(cfg["soft_cfg"], f, indent=4)
+        info("\033[1m打包完成")
+        return True
+    print("取消打包")
+    return False
+
+if __name__ == "__main__":
+    args = get_args()
+
+    # print(args.mode)
+    eval(f"{args.mode}_{args.cmd}")(args)
+
+
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("filename", type=str)
+    # args = parser.parse_args()
+    # EXEC_FILE = args.filename # "apps/lightOTA/bin/ota_server"
+    # files = getDeps(EXEC_FILE)
+    # ignored = []
+    # common = []
+    # specific = []
+    # for so_type, cfg in files.items():
+    #     if len(cfg):
+    #         print(so_type, ":")
+    #     for file, location in cfg.items():
+    #         print(f"    {file} -> {'not found' if location is None else location}")
+
+
+
+
