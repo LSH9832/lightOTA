@@ -3,3 +3,4 @@
 build*
 install/apps/lightOTA/bin
 install/apps/lightOTA/lib
+install/apps/lightOTA/ota_files/*.ota
