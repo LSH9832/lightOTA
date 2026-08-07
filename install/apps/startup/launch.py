@@ -55,6 +55,7 @@ def get_launch_args(parser=None, set_choices=True):
 
 
 def do_one_process(node_name, command, wait_time, pid_data):
+    # print(command)
     pid_data[node_name] = os.getpid()
     time.sleep(wait_time)
     os.system(command)
@@ -131,7 +132,7 @@ def parse_environ(cfg: dict):
                     command += f":{v}"
                 commands += command + ";"
             elif isinstance(cfg[k], (str, float, int)) and len(str(cfg[k])):
-                commands += f"export {k}={cfg[k]};"
+                commands += f"export {k}=\"{cfg[k]}\";"
     return commands
 
 def parse_global_command(cfg: dict):
