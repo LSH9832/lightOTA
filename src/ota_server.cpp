@@ -62,12 +62,14 @@ struct Impl
     ota::LightOTA* ota_handle{nullptr};
     std::string prefix="", ota_save_path="./ota_files", html_file_path="./source/html";
     int port = 8081;
+    std::string title_name, footer_name;
 
     void set()
     {
         if (app == nullptr)
         {
             app = new FlaskCpp("ota_server", 2, 128);
+            
         }
     }
 
@@ -89,9 +91,9 @@ struct Impl
                 if (p.length()) wlist.push_back(p);
             }
             ota_handle->setWhiteList(wlist);
-            INFO << "ota mode: whitelist" << ENDL;
+            // INFO << "ota mode: whitelist" << ENDL;
         }
-        else if (getenv("OTA_PATH_BLACKLIST"))
+        if (getenv("OTA_PATH_BLACKLIST"))
         {
             pystring ota_paths = getenv("OTA_PATH_BLACKLIST");
             std::vector<std::string> blist;
@@ -100,11 +102,26 @@ struct Impl
                 if (p.length()) blist.push_back(p);
             }
             ota_handle->setBlackList(blist);
-            INFO << "ota mode: blacklist" << ENDL;
+            // INFO << "ota mode: blacklist" << ENDL;
         }
-        else INFO << "ota mode: default" << ENDL;
-        
+        // else INFO << "ota mode: default" << ENDL;
 
+        if (getenv("OTA_TITLE"))
+        {
+            title_name = getenv("OTA_TITLE");
+        }
+        
+        if (getenv("OTA_FOOTER"))
+        {
+            footer_name = getenv("OTA_FOOTER");
+        }
+        else
+        {
+            footer_name = "作者：<a href='https://github.com/LSH9832'>LSH9832</a>";
+        }
+
+        app->loadTemplatesFromDirectory("source/html");
+        
         if (getenv("OTA_SERVER_SECRET_KEY"))
             app->setSecretKey(getenv("OTA_SERVER_SECRET_KEY"));
 
@@ -406,9 +423,16 @@ struct Impl
         });
 
         app->route2(prefix + "/ota/<path:address>", [&](const RequestData& req) {
-            std::string fpath = osp::join({html_file_path, req.routeParams.at("address")});
+            pystring fpath = osp::join({html_file_path, req.routeParams.at("address")});
             if (os::path::isfile(fpath))
             {
+                if (fpath.endswith(".html"))
+                {
+                    TemplateEngine::Context ctx;
+                    ctx["name"] = title_name;
+                    ctx["footer"] = footer_name;
+                    return flaskcpp::send_text(app->renderTemplate(osp::basename(fpath), ctx), {FLASK_NO_CACHE});
+                }
                 return flaskcpp::send_file(fpath, osp::basename(fpath));
             }
             return flaskcpp::send_error("<h1>404 Not Found</h1>", 404);
