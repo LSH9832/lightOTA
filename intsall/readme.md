@@ -1,4 +1,4 @@
-# 软件自启动服务说明
+# 软件自启动及OTA服务说明
 
 ## 1.软件自启动服务安装
 
@@ -29,7 +29,7 @@ systemctl start apps_auto_start
                  └── 该软件的所有文件
 ```
 
-## 3. 软件部署方法
+## 3. 软件OTA部署方法
 
 使用脚本[scripts/ota](scripts/ota)进行软件打包即可快速部署
 
