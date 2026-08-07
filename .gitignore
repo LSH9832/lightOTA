@@ -1,0 +1,5 @@
+.vscode
+.git
+build*
+install/apps/lightOTA/bin
+install/apps/lightOTA/lib
