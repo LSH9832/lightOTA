@@ -110,6 +110,10 @@ struct Impl
         {
             title_name = getenv("OTA_TITLE");
         }
+        else
+        {
+            title_name = "OTA系统";
+        }
         
         if (getenv("OTA_FOOTER"))
         {

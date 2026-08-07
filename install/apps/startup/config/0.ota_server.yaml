@@ -1,8 +1,8 @@
 ota_server:
-  work_dir: /mnt/e/codes/repositories/github/lightOTA/install/apps/lightOTA
+  work_dir: $OTA_TEST_PATH/apps/lightOTA
   environ:
     SERVICE_PORT: 8088
-    OTA_TITLE: 后台
+    OTA_TITLE: 软件OTA管理系统
     OTA_FOOTER: "Designed By <a href='https://github.com/LSH9832'>LSH9832</a>"
     OTA_PATH_WHITELIST:
       - /apps
