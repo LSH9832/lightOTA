@@ -15,7 +15,7 @@ systemctl start apps_auto_start
 
 对于每个需要部署的软件，都在目录`/apps`下单独创建一个文件夹去存放软件（可执行文件、动态依赖库、配置文件等）。如预设的OTA服务软件就在`/apps/lightOTA`目录下
 
-对于每个需要部署的软件，要在目录`/apps/startup/config`下编写一个单独的自启动配置文件，如预设的OTA服务软件配置文件路径为`/apps/startup/config/0.ota_server.yaml`，具体配置文件写法及命名规则见[install/apps/startup/config/readme.md](install/apps/startup/config/readme.md)
+对于每个需要部署的软件，要在目录`/apps/startup/config`下编写一个单独的自启动配置文件，如预设的OTA服务软件配置文件路径为`/apps/startup/config/0.ota_server.yaml`，具体配置文件写法及命名规则见[apps/startup/config/readme.md](apps/startup/config/readme.md)
 
 由上述可知每个软件部署目录如下
 
@@ -126,7 +126,7 @@ ota software add 测试软件 test \
               -r 8
 ```
 
-此时需要根据命令行提示进行对应根目录选择等操作。操作完成后会在`.ota`文件夹下生成`8.test.yaml`的自启动配置文件，参照[install/apps/startup/config/readme.md](install/apps/startup/config/readme.md)的说明进行修改
+此时需要根据命令行提示进行对应根目录选择等操作。操作完成后会在`.ota`文件夹下生成`8.test.yaml`的自启动配置文件，参照[apps/startup/config/readme.md](apps/startup/config/readme.md)的说明进行修改
 
 一个工程目录下可能存在多个软件，重复执行本节所述操作即可
 
