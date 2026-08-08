@@ -5,15 +5,18 @@
     const errorModal = document.getElementById('errorModal');
     const errorMessage = document.getElementById('errorMessage');
     const closeModalBtn = document.getElementById('closeModalBtn');
+    const route_prefix = document.getElementById('route_prefix_info').innerText;
+
+    // console.log(route_prefix);
     // const upload_button = document.getElementById("upload");
     // const softlist_btn = document.getElementById("softlist");
     
 
     // softlist_btn.addEventListener('click', function () {
-    //     window.location.href = '/ota/softwares.html';
+    //     window.location.href = route_prefix + '/softwares.html';
     // });
     // upload_button.addEventListener('click', function () {
-    //     window.location.href = '/ota/upload.html';
+    //     window.location.href = route_prefix + '/upload.html';
     // });
     // 显示错误弹窗
     function showError(message) {
@@ -63,7 +66,7 @@
         buttons.forEach(function (btn) {
             btn.addEventListener('click', function () {
                 const name = decodeURIComponent(btn.getAttribute('data-name'));
-                window.location.href = '/ota/info.html?name=' + encodeURIComponent(name);
+                window.location.href = route_prefix + '/info.html?name=' + encodeURIComponent(name);
             });
         });
 
@@ -81,7 +84,7 @@
     function fetchFileList() {
         tableContainer.innerHTML = '<div class="loading">加载中...</div>';
 
-        fetch('/ota/api/getOTAFileList')
+        fetch(route_prefix + '/api/getOTAFileList')
             .then(function (response) {
                 return response.json();
             })

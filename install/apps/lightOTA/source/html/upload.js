@@ -8,13 +8,16 @@
     const uploadBtn = document.getElementById('uploadBtn');
     // const returnBtn = document.getElementById('returnBtn');
     const retMessageArea = document.getElementById('ret_message_area');
+    const route_prefix = document.getElementById('route_prefix_info').innerText;
+
+    // console.log(route_prefix);
 
     let selectedFile = null;
     const allowedExtensions = ['.ota', '.zip'];
 
     // returnBtn.addEventListener('click', function () {
     //     // console.log(111);
-    //     window.location.href = '/ota/ota_files.html';
+    //     window.location.href = route_prefix + '/ota_files.html';
     // });
 
     // returnBtn.disabled = false;
@@ -96,7 +99,7 @@
         const formData = new FormData();
         formData.append('file', selectedFile);
 
-        fetch('/ota/api/uploadFile', {
+        fetch(route_prefix + '/api/uploadFile', {
             method: 'POST',
             body: formData
         })
@@ -111,14 +114,14 @@
                 {
                     appendMessage('上传成功！2秒后跳转到软件版本控制页面', 'success');
                     setTimeout(() => {
-                        window.location.href = "/ota/softwares.html";
+                        window.location.href =  route_prefix + "/softwares.html";
                     }, 2000);
                 }
                 else
                 {
                     appendMessage('上传成功！2秒后跳转到升级包信息页面', 'success');
                     setTimeout(() => {
-                        window.location.href = "/ota/info.html?name=" + selectedFile.name;
+                        window.location.href = route_prefix + "/info.html?name=" + selectedFile.name;
                     }, 2000);
                 }
                 

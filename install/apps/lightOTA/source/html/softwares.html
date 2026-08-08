@@ -10,14 +10,14 @@
     <!-- 顶部导航栏 -->
     <nav class="navbar">
         <div class="navbar-brand">
-            <a class="no-underline" href="/ota" style="color:black">{{ name }}</a>
+            <a class="no-underline" href="{{ route_prefix }}" style="color:black">{{ name }}</a>
         </div>
         <!-- 右侧链接区域 -->
         <div class="navbar-nav">
-            <a class="nav-item no-underline" href="/ota/softwares.html">软件版本管理</a>
-            <a class="nav-item no-underline" href="/ota/ota_files.html">OTA文件管理</a>
-            <a class="nav-item no-underline" href="/ota/upload.html">OTA文件上传</a>
-            <!-- <a class="nav-item no-underline" href="/ota">系统首页</a> -->
+            <a class="nav-item no-underline" href="{{ route_prefix }}/softwares.html">软件版本管理</a>
+            <a class="nav-item no-underline" href="{{ route_prefix }}/ota_files.html">OTA文件管理</a>
+            <a class="nav-item no-underline" href="{{ route_prefix }}/upload.html">OTA文件上传</a>
+            <!-- <a class="nav-item no-underline" href="{{ route_prefix }}">系统首页</a> -->
         </div>
     </nav>
 
@@ -66,6 +66,8 @@
     <div class="footer">
         {{ footer }} ©<script>document.write(new Date().getFullYear());</script>
     </div>
+
+    <div id="route_prefix_info" hidden>{{ route_prefix }}</div>
 
     <script src="softwares.js"></script>
 </body>

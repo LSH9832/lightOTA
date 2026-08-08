@@ -3,6 +3,7 @@ ota_server:
   environ:
     SERVICE_PORT: 8088
     OTA_TITLE: 软件OTA管理系统
+    OTA_ROUTE_PREFIX: /ota
     OTA_FOOTER: "Designed By <a href='https://github.com/LSH9832'>LSH9832</a>"
     OTA_PATH_WHITELIST:
       - /apps

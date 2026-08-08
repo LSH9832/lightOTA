@@ -8,11 +8,14 @@
     const confirmModal = document.getElementById('confirmModal');
     const cancelBtn = document.getElementById('cancelBtn');
     const confirmBtn = document.getElementById('confirmBtn');
+    const route_prefix = document.getElementById('route_prefix_info').innerText;
+
+    // console.log(route_prefix);
     // const returnBtn = document.getElementById('returnBtn');
 
     // returnBtn.addEventListener('click', function () {
     //     console.log(111);
-    //     window.location.href = '/ota/ota_files.html';
+    //     window.location.href = route_prefix + '/ota_files.html';
     // });
 
     // 从 URL 获取文件名参数
@@ -79,7 +82,7 @@
         infoShowArea.innerHTML = '<div class="loading">加载中...</div>';
         appendMessage(`正在获取文件信息: ${fileName}`, 'info');
 
-        fetch('/ota/api/info?name=' + encodeURIComponent(fileName))
+        fetch(route_prefix + '/api/info?name=' + encodeURIComponent(fileName))
             .then(function (response) {
                 return response.json();
             })
@@ -108,7 +111,7 @@
         updateBtn.disabled = true;
         appendMessage(`正在更新文件: ${fileName}`, 'info');
 
-        fetch('/ota/api/update?name=' + encodeURIComponent(fileName), {
+        fetch(route_prefix + '/api/update?name=' + encodeURIComponent(fileName), {
             method: 'GET'
         })
         .then(function (response) {
@@ -161,7 +164,7 @@
         deleteBtn.disabled = true;
         appendMessage(`正在删除文件: ${fileName}`, 'info');
 
-        fetch('/ota/api/deleteFile?name=' + encodeURIComponent(fileName), {
+        fetch(route_prefix + '/api/deleteFile?name=' + encodeURIComponent(fileName), {
             method: 'GET'
         })
         .then(function (response) {
@@ -173,7 +176,7 @@
                 if (data.message) {
                     appendMessage(data.message, 'success');
                 }
-                setTimeout(() => {window.location.href = "/ota/ota_files.html";}, 2000);
+                setTimeout(() => {window.location.href = route_prefix + "/ota_files.html";}, 2000);
                 
             } else {
                 appendMessage(data.message || '删除失败', 'error');

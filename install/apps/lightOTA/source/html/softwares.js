@@ -4,11 +4,14 @@
     const tableBody = document.getElementById('tableBody');
     const saveAllBtn = document.getElementById('saveAllBtn');
     // const uploadBtn = document.getElementById('uploadBtn');
+    const route_prefix = document.getElementById('route_prefix_info').innerText;
+
+    // console.log(route_prefix);
 
     let softwareListData = []; // 存储所有软件完整信息，保存时遍历使用
 
     // uploadBtn.addEventListener('click', function () {
-    //     window.location.href="/ota/upload.html";
+    //     window.location.href = route_prefix + "/upload.html";
     // });
 
     /**
@@ -169,7 +172,7 @@
             // 封装单个请求Promise，存入数组
             const singleReqPromise = (async () => {
                 try {
-                    const res = await fetch(`/ota/api/update?name=${encodeURIComponent(selectedFileName)}`);
+                    const res = await fetch(route_prefix + `/api/update?name=${encodeURIComponent(selectedFileName)}`);
                     const data = await res.json();
                     if(data.success){
                         appendMessage(`${softName}：更新成功`,"success");
@@ -210,7 +213,7 @@
         if (first) appendMessage("正在获取已安装软件列表", "info");
         else appendMessage("刷新软件列表", "info");
         try {
-            const resp = await fetch("/ota/api/getSoftwareList");
+            const resp = await fetch(route_prefix + "/api/getSoftwareList");
             const data = await resp.json();
             if (!data.success) {
                 appendMessage(`获取列表失败: ${data.message || "服务返回异常"}`, "error");

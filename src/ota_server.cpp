@@ -60,7 +60,7 @@ struct Impl
 {
     FlaskCpp* app{nullptr};
     ota::LightOTA* ota_handle{nullptr};
-    std::string prefix="", ota_save_path="./ota_files", html_file_path="./source/html";
+    std::string prefix="/ota", ota_save_path="./ota_files", html_file_path="./source/html";
     int port = 8081;
     std::string title_name, footer_name;
 
@@ -71,6 +71,12 @@ struct Impl
             app = new FlaskCpp("ota_server", 2, 128);
             
         }
+    }
+
+    std::string getValueFromEnv(const std::string& env_name, const std::string& default_value)
+    {
+        if (getenv(env_name.c_str())) return getenv(env_name.c_str());
+        return default_value;
     }
 
     void run()
@@ -106,30 +112,21 @@ struct Impl
         }
         // else INFO << "ota mode: default" << ENDL;
 
-        if (getenv("OTA_TITLE"))
+        title_name = getValueFromEnv("OTA_TITLE", "OTA系统");
+        footer_name = getValueFromEnv("OTA_FOOTER", "作者：<a href='https://github.com/LSH9832'>LSH9832</a>");
+        prefix = getValueFromEnv("OTA_ROUTE_PREFIX", prefix);
+        if (!prefix.empty()) if (prefix[0] != '/')
         {
-            title_name = getenv("OTA_TITLE");
-        }
-        else
-        {
-            title_name = "OTA系统";
-        }
-        
-        if (getenv("OTA_FOOTER"))
-        {
-            footer_name = getenv("OTA_FOOTER");
-        }
-        else
-        {
-            footer_name = "作者：<a href='https://github.com/LSH9832'>LSH9832</a>";
+            prefix = "/" + prefix;
         }
 
-        app->loadTemplatesFromDirectory("source/html");
+        html_file_path = getValueFromEnv("OTA_HTML_TEMPLATE_PATH", html_file_path);
+        app->loadTemplatesFromDirectory(html_file_path);
         
         if (getenv("OTA_SERVER_SECRET_KEY"))
             app->setSecretKey(getenv("OTA_SERVER_SECRET_KEY"));
 
-        app->route2(prefix + "/ota/api/getOTAFileList", [&](const RequestData& req) {
+        app->route2(prefix + "/api/getOTAFileList", [&](const RequestData& req) {
             if (req.isFromData)
             {
                 req.acceptForm();
@@ -144,7 +141,7 @@ struct Impl
             return flaskcpp::send_error(js, ret_code, {FLASK_NO_CACHE});
         });
 
-        app->route2(prefix + "/ota/api/getSoftwareList", [&](const RequestData& req) {
+        app->route2(prefix + "/api/getSoftwareList", [&](const RequestData& req) {
             if (req.isFromData)
             {
                 req.acceptForm();
@@ -198,7 +195,7 @@ struct Impl
 
         
 
-        app->route2(prefix + "/ota/api/update", [&](const RequestData& req) {
+        app->route2(prefix + "/api/update", [&](const RequestData& req) {
             if (req.isFromData)
             {
                 req.acceptForm();
@@ -231,7 +228,7 @@ struct Impl
             return flaskcpp::send_error(js, 200, {FLASK_NO_CACHE});
         });
 
-        app->route2(prefix + "/ota/api/info", [&](const RequestData& req) {
+        app->route2(prefix + "/api/info", [&](const RequestData& req) {
             if (req.isFromData)
             {
                 req.acceptForm();
@@ -323,7 +320,7 @@ struct Impl
             return flaskcpp::send_error(js, 200, {FLASK_NO_CACHE});
         });
 
-        app->route2(prefix + "/ota/api/deleteFile", [&](const RequestData& req) {
+        app->route2(prefix + "/api/deleteFile", [&](const RequestData& req) {
             if (req.isFromData)
             {
                 req.acceptForm();
@@ -355,7 +352,7 @@ struct Impl
             return flaskcpp::send_error(js, ret_code, {FLASK_NO_CACHE});
         });
 
-        app->route2(prefix + "/ota/api/uploadFile", [&](const RequestData& req) {
+        app->route2(prefix + "/api/uploadFile", [&](const RequestData& req) {
             flaskcpp::JsonGenerator js;
             js.add("success", true);
             bool has_file=false;
@@ -417,16 +414,16 @@ struct Impl
             return flaskcpp::send_error(js, ret_code, {FLASK_NO_CACHE});
         });
 
-        app->route2(prefix + "/ota", [&](const RequestData& req) {
-            return flaskcpp::send_error(app->jump2("/ota/softwares.html"), 200);
+        app->route2(prefix, [&](const RequestData& req) {
+            return flaskcpp::send_error(app->jump2(prefix + "/softwares.html"), 200);
         });
 
-        app->route2(prefix + "/ota/api/get_html_path", [&](const RequestData& req) {
+        app->route2(prefix + "/api/get_html_path", [&](const RequestData& req) {
             std::string fpath = osp::abspath(html_file_path);
             return flaskcpp::send_error(fpath, 200);
         });
 
-        app->route2(prefix + "/ota/<path:address>", [&](const RequestData& req) {
+        app->route2(prefix + "/<path:address>", [&](const RequestData& req) {
             pystring fpath = osp::join({html_file_path, req.routeParams.at("address")});
             if (os::path::isfile(fpath))
             {
@@ -435,6 +432,7 @@ struct Impl
                     TemplateEngine::Context ctx;
                     ctx["name"] = title_name;
                     ctx["footer"] = footer_name;
+                    ctx["route_prefix"] = prefix;
                     return flaskcpp::send_text(app->renderTemplate(osp::basename(fpath), ctx), {FLASK_NO_CACHE});
                 }
                 return flaskcpp::send_file(fpath, osp::basename(fpath));
