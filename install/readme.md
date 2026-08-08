@@ -90,10 +90,10 @@ ota sysroot create <名称> <系统根目录路径> --ld-library-path <添加额
 # /usr/lib/x86_64-linux-gnu
 
 # 对于交叉编译环境，比如rk3576编译环境，根目录为/opt/cross-compile/rk3576/sysroot，可如下填写
-ota sysroot rk3576 /opt/cross-compile/rk3576/sysroot --ld-library-path /opt/cross-compile/rk3576/sysroot/opt/my_lib
+ota sysroot create rk3576 /opt/cross-compile/rk3576/sysroot --ld-library-path /opt/cross-compile/rk3576/sysroot/opt/my_lib
 
 # 如果就是本机编译环境，则可填写如下
-ota sysroot origin / --ld-library-path /opt/my_lib
+ota sysroot create origin / --ld-library-path /opt/my_lib
 ```
 
 创建成功后使用`ota sysroot list`查看所有已创建的系统根目录名称列表，使用`ota sysroot info rk3576`查看对应系统信息
