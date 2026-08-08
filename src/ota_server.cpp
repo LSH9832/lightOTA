@@ -68,8 +68,21 @@ struct Impl
     {
         if (app == nullptr)
         {
+            std::cout << "\033[32m\033[1m" << R"(
+ _     _       _     _    ___ _____  _    
+| |   (_) __ _| |__ | |_ / _ \_   _|/ \   
+| |   | |/ _` | '_ \| __| | | || | / _ \  
+| |___| | (_| | | | | |_| |_| || |/ ___ \ 
+|_____|_|\__, |_| |_|\__|\___/ |_/_/   \_\
+         |___/
+)" << "\033[0m" << std::endl;
+
+            flaskSetDefaultVerbose(false);
             app = new FlaskCpp("ota_server", 2, 128);
-            
+            logsetStdoutFormat("$TIME | $LEVEL | $MSG");
+            app->setLog([](flaskcpp::LogMsg msg) {
+                logger.log((LogLevel)msg.level, msg.content, {msg.file, msg.line, msg.function});
+            });
         }
     }
 
