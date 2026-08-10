@@ -16,7 +16,8 @@ try:
 except:
     argcomplete_loaded = False
 
-OTA_PATH = osp.join("/home", pwd.getpwuid(os.geteuid()).pw_name, ".ota")
+USERNAME = pwd.getpwuid(os.geteuid()).pw_name
+OTA_PATH = osp.join("/" if USERNAME == "root" else "/home", USERNAME, ".ota")
 os.makedirs(osp.join(OTA_PATH, "sysroots"), exist_ok=True)
 OTA_SYSROOTS = [osp.basename(path) for path in glob(osp.join(OTA_PATH, "sysroots", "*")) if osp.isdir(path) and osp.isfile(osp.join(path, ".sysrootconfig"))]
 OTA_SOFT_PATH = os.getcwd()
