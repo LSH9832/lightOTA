@@ -68,7 +68,15 @@ eval "$(register-python-argcomplete3 ota)"
 source ~/.bashrc
 ```
 
-即可
+即可。
+
+另外，建议安装`pyelftools`库，若未安装使用`ota`打包时则会调用linux系统中的`readelf`工具，如果在windows下使用则必须安装
+
+```
+pip install pyelftools
+```
+
+或使用已打包好的[ota.exe](/releases/download/v0.0.1/ota.exe)文件（放置于`C:/Windows/System32`路径下）
 
 ### 3.2 使用步骤
 
