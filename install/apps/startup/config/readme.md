@@ -2,7 +2,7 @@
 
 该目录用于存放软件自启动配置yaml文件
 
-- 命名按照`{优先级}.{软件英文名}.yaml`的格式，优先级从0~9依次变低，假设飞控软件优先级为0，则可以命名为`0.fly_control.yaml`，数字越小越先启动，相同优先级软件将同时启动（误差毫秒级）。
+- 命名按照`{优先级}.{软件英文名}.yaml`的格式，优先级从0~9依次变低，假设某控制软件优先级为0，则可以命名为`0.control_software.yaml`，数字越小越先启动，相同优先级软件将同时启动（误差毫秒级）。
 - 执行每个优先级的程序前会先执行`before_start`文件夹下对应的bash文件（从优先级1开始默认为执行睡眠3秒，可按需修改，比如检查优先级更高的某个程序是否正常启动等），如果该优先级下没有需要启动的软件，则对应的bash脚本也不执行（优先级0除外，该脚本必定执行）。
 - 如果`before_start`文件夹下缺失对应优先级bash文件会生成默认睡眠3秒的对应的bash文件再运行。
 
@@ -17,7 +17,7 @@
 # 对该软件下的所有可执行程序生效
 global_environ:
   APP_DIR: /apps
-  ROOT_DIR: $APP_DIR/track_control
+  ROOT_DIR: $APP_DIR/control_software
   WORK_DIR: $ROOT_DIR/bin
   IMAGE_TOPIC: /camera/image
   DETECT_TOPIC: $IMAGE_TOPIC/detection
