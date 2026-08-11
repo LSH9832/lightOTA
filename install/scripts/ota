@@ -1,6 +1,5 @@
 #! /usr/bin/python3
 import os
-import pwd
 import os.path as osp
 from glob import glob
 import argparse
@@ -10,19 +9,29 @@ import zipfile
 import time
 from copy import deepcopy
 import stat
-try:
-    import argcomplete
-    argcomplete_loaded = True
-except:
+import platform
+import getpass
+is_windows = platform.system().lower() == "windows"
+if is_windows:
     argcomplete_loaded = False
+else:
+    try:
+        import argcomplete
+        argcomplete_loaded = True
+    except:
+        argcomplete_loaded = False
 
-USERNAME = pwd.getpwuid(os.geteuid()).pw_name
-OTA_PATH = osp.join("/" if USERNAME == "root" else "/home", USERNAME, ".ota")
-os.makedirs(osp.join(OTA_PATH, "sysroots"), exist_ok=True)
+# if not is_windows:
+#     import pwd
+# else:
+
+USERNAME = getpass.getuser() # if is_windows else pwd.getpwuid(os.geteuid()).pw_name
+OTA_PATH = osp.join("C:/Users" if is_windows else ("/" if USERNAME == "root" else "/home"), USERNAME, ".ota").replace("\\", "/")
+os.makedirs(osp.join(OTA_PATH, "sysroots").replace("\\", "/"), exist_ok=True)
 OTA_SYSROOTS = [osp.basename(path) for path in glob(osp.join(OTA_PATH, "sysroots", "*")) if osp.isdir(path) and osp.isfile(osp.join(path, ".sysrootconfig"))]
 OTA_SOFT_PATH = os.getcwd()
-OTA_SOFT_CFG_PATH = osp.join(OTA_SOFT_PATH, ".softota")
-OTA_SOFT_CFG_FILE = osp.join(OTA_SOFT_PATH, ".softota", "config.json")
+OTA_SOFT_CFG_PATH = osp.join(OTA_SOFT_PATH, ".softota").replace("\\", "/")
+OTA_SOFT_CFG_FILE = osp.join(OTA_SOFT_PATH, ".softota", "config.json").replace("\\", "/")
 
 
 def get_args():
@@ -95,12 +104,20 @@ def get_args():
     if argcomplete_loaded:
         argcomplete.autocomplete(parser)
 
-    return parser.parse_args()
+    
+    args = parser.parse_args()
+
+    return args, \
+           parser.format_help() if not hasattr(args, "mode") else \
+            sp_sysroot.format_help() if args.mode == "sysroot" else \
+            sp_software.format_help() if args.mode == "software" else parser.format_help()
+
 
 SKIP_FILES = [
     "libstdc++.so",
     "libgcc_s.so",
     "libc.so",
+    "libcextern.so"
     "ld-linux-aarch64.so",
     "ld-linux-x86-64.so",
     "libpthread.so",
@@ -128,6 +145,7 @@ SKIP_FILES = [
     "libnss_db.so"
 ]
 
+
 def show(color="", *args, **kwargs):
     if len(args) == 1:
         print(color + args[0] + "\033[0m", **kwargs)
@@ -141,24 +159,30 @@ def show(color="", *args, **kwargs):
 
 def info(*args, **kwargs):
     show("\033[32m", *args, **kwargs)
-    
+
+
 def warn(*args, **kwargs):
     show("\033[33m", *args, **kwargs)
 
+
 def error(*args, **kwargs):
     show("\033[31m", *args, **kwargs)
+
 
 check_enabled = True
 try:
     from elftools.elf.elffile import ELFFile
     elftools_loaded = True
 except:
+    if is_windows:
+        raise
     elftools_loaded = False
     warn("elftools库未安装，改用系统readelf工具")
+    os.system("pip3 install pyelftools")
     if not osp.isfile("/usr/bin/readelf"):
         check_enabled = False
         error("未找到系统readelf工具！无法使用打包功能和检查功能！")
-    time.sleep(1)
+        time.sleep(1)
 
 
 def get_dependencies(file_path):
@@ -177,18 +201,20 @@ def get_dependencies(file_path):
         return dependencies
     return os.popen(f"readelf -d {file_path} | grep NEEDED | awk '{{print $5}}' | tr -d '[]'").read().split("\n")[:-1]
 
+
 def get_location(file, path, recursive=False, sysroot=None):
     if sysroot is not None:
         path = sysroot + path
     if recursive:
         matches = glob(osp.join(path, "**", file), recursive=True)
         if len(matches):
-            location = osp.abspath(matches[0])
+            location = osp.abspath(matches[0]).replace("\\", "/")
             return True, location
     elif osp.isfile(osp.join(path, file)):
-        location = osp.abspath(osp.join(path, file))
+        location = osp.abspath(osp.join(path, file)).replace("\\", "/")
         return True, location
     return False, None
+
 
 def isSkipFile(filename: str):
     for f in SKIP_FILES:
@@ -252,7 +278,7 @@ def sysroot_create(args):
         warn(f"系统根路径名称'{args.name}'已存在，不得重复创建！")
         return False
 
-    sysroot_ota_path = osp.join(OTA_PATH, "sysroots", args.name)
+    sysroot_ota_path = osp.join(OTA_PATH, "sysroots", args.name).replace("\\", "/")
     if osp.isdir(sysroot_ota_path):
         warn(f"系统路径已经创建！请检查'{OTA_PATH}'路径配置是否被手动修改！")
         return False
@@ -265,7 +291,7 @@ def sysroot_create(args):
     config = {
         "path": osp.abspath(args.path),
         "check_path": [
-            [osp.abspath(osp.join(sysroot_ota_path, "lib")), False],
+            [osp.abspath(osp.join(sysroot_ota_path, "lib")).replace("\\", "/"), False],
             ["/lib64", False],
             ["/usr/lib64", False],
             ["/lib", False],
@@ -291,7 +317,8 @@ def sysroot_list(args):
     for i, name in enumerate(OTA_SYSROOTS):
         print(f"{i+1}. {name}")
     return True
-    
+
+
 def sysroot_info(args):
     cfg = {}
     with open(osp.join(OTA_PATH, "sysroots", args.name, ".sysrootconfig")) as f:
@@ -326,6 +353,7 @@ def sysroot_delete(args):
     print("删除操作已取消")
     return False
 
+
 def sysroot_modify(args):
     print(f"请选择要对系统{args.name}进行的更改\n[1] 添加动态库查询路径\n[2] 生成交叉编译工具链.cmake文件\n[3] 退出")
     res = input("请输入序号1~3: ")
@@ -336,7 +364,7 @@ def sysroot_modify(args):
         error("输入错误！")
         res = input("请输入序号1~3: ")
     res = int(res)
-    sysroot_ota_path = osp.join(OTA_PATH, "sysroots", args.name)
+    sysroot_ota_path = osp.join(OTA_PATH, "sysroots", args.name).replace("\\", "/")
     if res == 3:
         print("已退出")
         return False
@@ -434,10 +462,11 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 # 查找包配置文件时，只在目标环境中找
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 """
-        cmake_path = osp.join(sysroot_ota_path, f"{arch}-linux.cmake")
+        cmake_path = osp.join(sysroot_ota_path, f"{arch}-linux.cmake").replace("\\", "/")
         with open(cmake_path, "w") as f:
             f.write(cmake_content)
         info(f"已生成: {cmake_path}")
+
 
 def sysroot_pack(args):
     cfg = {}
@@ -446,8 +475,8 @@ def sysroot_pack(args):
     # print(cfg)
     pack_time = time.time()
     last_pack_timestamp = cfg.get("last_pack_timestamp", 0)
-    ota_file = osp.join(OTA_PATH, "sysroots", args.name, f"{args.name}-通用依赖库-{args.version}.ota")
-    lib_files = glob(osp.join(OTA_PATH, "sysroots", args.name, "lib", "*"))
+    ota_file = osp.join(OTA_PATH, "sysroots", args.name, f"{args.name}-通用依赖库-{args.version}.ota").replace("\\", "/")
+    lib_files = glob(osp.join(OTA_PATH, "sysroots", args.name, "lib", "*").replace("\\", "/"))
     lib_files = [lib_file for lib_file in lib_files if (not args.only_pack_new or osp.getmtime(lib_file) > last_pack_timestamp)]
     if not len(lib_files):
         warn("无更新，无需打包")
@@ -546,7 +575,7 @@ def software_add(args):
         if len(ps) != 2:
             error(f"输入有误：{p}")
             return False
-        pack[ps[0]] = osp.abspath(osp.join("/apps", args.en_name, ps[1]))
+        pack[ps[0]] = osp.abspath(osp.join("/apps", args.en_name, ps[1])).replace("\\", "/")
     args.rank = -1 if (args.rank is None or args.rank > 9 or args.rank < 0) else args.rank
     soft_cfg = {
         "name": args.name,
@@ -597,7 +626,7 @@ global_environ:
     with open(OTA_SOFT_CFG_FILE, "w") as f:
         json.dump(cfg, f, indent=4)
 
-    self_launch_file = osp.join(OTA_SOFT_CFG_PATH, f"{(str(args.rank) + '.') if args.rank >= 0 else ''}{args.en_name}.yaml")
+    self_launch_file = osp.join(OTA_SOFT_CFG_PATH, f"{(str(args.rank) + '.') if args.rank >= 0 else ''}{args.en_name}.yaml").replace("\\", "/")
     with open(self_launch_file, "w") as f:
         f.write(launch_yaml_str)
 
@@ -639,7 +668,7 @@ def software_info(args, pack=False, only_new=False, no_extra=False, version=""):
 
     ret = {
         "name": soft_cfg['name'],
-        "clib_path": osp.join(OTA_PATH, "sysroots", cfg["sys_name"]),
+        "clib_path": osp.join(OTA_PATH, "sysroots", cfg["sys_name"]).replace("\\", "/"),
         "file_name": f"{soft_cfg['name']}-{version}{'-new' if only_new else ('-lite' if no_extra else '-full')}.ota",
         "pack": {},
         "common_lib": [],
@@ -674,7 +703,7 @@ def software_info(args, pack=False, only_new=False, no_extra=False, version=""):
                     print(f"\033[31m[错误] 动态库“{n}”不存在！\033[0m")
                     check_pass = False
 
-    self_launch_config_path = osp.join(OTA_SOFT_CFG_PATH, f"{(str(soft_cfg['rank']) + '.') if soft_cfg['rank'] >= 0 else ''}{args.name}.yaml")
+    self_launch_config_path = osp.join(OTA_SOFT_CFG_PATH, f"{(str(soft_cfg['rank']) + '.') if soft_cfg['rank'] >= 0 else ''}{args.name}.yaml").replace("\\", "/")
     print(f"自启动配置文件： \033[32m{self_launch_config_path}\033[0m")
     if pack:
         if osp.getmtime(self_launch_config_path) > last_pack_time or not only_new:
@@ -691,10 +720,10 @@ def software_info(args, pack=False, only_new=False, no_extra=False, version=""):
                 if osp.isdir(k):
                     for extra_file in glob(osp.join(k, "**", "*"), recursive=True):
                         if osp.getmtime(extra_file) > last_pack_time or not only_new:
-                            ret["pack"][extra_file] = osp.join(v, osp.basename(extra_file))
+                            ret["pack"][extra_file] = osp.join(v, osp.basename(extra_file)).replace("\\", "/")
                 elif osp.isfile(k):
                     if osp.getmtime(k) > last_pack_time or not only_new:
-                        ret["pack"][k] = osp.join(v, osp.basename(k))
+                        ret["pack"][k] = osp.join(v, osp.basename(k)).replace("\\", "/")
             if args.check:
                 if not osp.exists(k):
                     check_pass = False
@@ -775,7 +804,7 @@ def software_delete(args):
         json.dump(cfg, f, indent=4)
 
     info("2.删除自启动配置文件...")
-    self_launch_config_path = osp.join(OTA_SOFT_CFG_PATH, f"{(str(soft_cfg['rank']) + '.') if soft_cfg['rank'] >= 0 else ''}{args.name}.yaml")
+    self_launch_config_path = osp.join(OTA_SOFT_CFG_PATH, f"{(str(soft_cfg['rank']) + '.') if soft_cfg['rank'] >= 0 else ''}{args.name}.yaml").replace("\\", "/")
     os.remove(self_launch_config_path)
     print("已删除")
     return True
@@ -797,7 +826,7 @@ def software_pack(args):
     print(f"通用依赖库数量：{len(cfg['common_lib'])}")
     print("确认打包？")
     if input("[y/N] >>> ").lower() in ["y", "yes"]:
-        ota_file = osp.join(OTA_SOFT_CFG_PATH, cfg["file_name"])
+        ota_file = osp.join(OTA_SOFT_CFG_PATH, cfg["file_name"]).replace("\\", "/")
         if osp.isfile(ota_file):
             if args.only_pack_new or args.no_extra_pack:
                 warn(f"已存在 {ota_file} ！鉴于本次打包非全量打包，请更换版本号后打包或全量打包。")
@@ -833,7 +862,7 @@ def software_pack(args):
                 print()
         print("开始复制通用依赖库")
         for i, so_file in enumerate(cfg["common_lib"]):
-            dest_so_file = osp.join(cfg["clib_path"], "lib", osp.basename(so_file))
+            dest_so_file = osp.join(cfg["clib_path"], "lib", osp.basename(so_file)).replace("\\", "/")
             info(f"\033[K\033[1000C\r({i+1}/{len(cfg['common_lib'])}) 复制 {osp.basename(so_file)} 至 {dest_so_file}", end="\033[K\033[1000C")
             if not osp.isfile(dest_so_file):
                 shutil.copyfile(so_file, dest_so_file, follow_symlinks=False)
@@ -854,10 +883,13 @@ def software_pack(args):
     return False
 
 if __name__ == "__main__":
-    args = get_args()
+    args, usage = get_args()
 
     # print(args.mode)
-    eval(f"{args.mode}_{args.cmd}")(args)
+    try:
+        eval(f"{args.mode}_{args.cmd}")(args)
+    except:
+        print(usage)
 
 
     # parser = argparse.ArgumentParser()
