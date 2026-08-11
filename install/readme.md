@@ -76,7 +76,7 @@ source ~/.bashrc
 pip install pyelftools
 ```
 
-或使用已打包好的[ota.exe](/releases/download/v0.0.1/ota.exe)文件（放置于`C:/Windows/System32`路径下）
+或使用已打包好的[ota.exe](https://github.com/LSH9832/lightOTA/releases/tag/v0.0.1/ota.exe)文件（放置于`C:/Windows/System32`路径下）
 
 ### 3.2 使用步骤
 
