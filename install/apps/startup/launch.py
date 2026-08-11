@@ -48,6 +48,7 @@ def get_launch_args(parser=None, set_choices=True):
     parser.add_argument("--no-show", action="store_true")
     parser.add_argument("--no-debug", action="store_true")
     parser.add_argument("-c", "--config", type=str, default=None, help="replace config file")
+    parser.add_argument("--only-launch", type=str, nargs="+", default=None, help="only launch chosen node")
     if isRootParser:
         if __argcompleteEnaled:
             argcomplete.autocomplete(parser)
@@ -55,7 +56,6 @@ def get_launch_args(parser=None, set_choices=True):
 
 
 def do_one_process(node_name, command, wait_time, pid_data):
-    # print(command)
     pid_data[node_name] = os.getpid()
     time.sleep(wait_time)
     os.system(command)
@@ -185,6 +185,8 @@ def do_launch_process(args: argparse.Namespace = None, set_choices=True):
     for i, node_name in enumerate(cfg):
         if node_name in ["global_environ", "global_command", "command_based_environ"]:
             continue
+        if args.only_launch is not None and node_name not in args.only_launch:
+            continue
         command = global_command + parse_environ(cfg[node_name].get("environ")) + parse_command(cfg[node_name], not args.no_log, args.config, args.no_show, args.no_debug, args.no_cd)
         # print(command)
         processes[node_name] = Process(target=do_one_process, args=(node_name, command, i * 0.07, mpdict))
@@ -202,11 +204,19 @@ def do_launch_process(args: argparse.Namespace = None, set_choices=True):
                     continue
                 if cfg[node_name].get("run_once", False):
                     continue
+
+                if args.only_launch is not None and node_name not in args.only_launch:
+                    continue
+
                 if not processes[node_name].is_alive():
                     if args.no_relaunch:
                         print(f"node named '{node_name}' has been terminated. exit.")
                         for i, node_name in enumerate(cfg):
                             # processes[node_name].terminate()
+                            if node_name in ["global_environ", "global_command", "command_based_environ"]:
+                                continue
+                            if args.only_launch is not None and node_name not in args.only_launch:
+                                continue
                             kill_node(processes[node_name], cfg[node_name], mpdict[node_name])
                             if processes[node_name].is_alive():
                                 # os.system(f"kill -9 {mpdict[node_name]}")
@@ -227,6 +237,8 @@ def do_launch_process(args: argparse.Namespace = None, set_choices=True):
             # processes[node_name].terminate()
             if node_name in ["global_environ", "global_command", "command_based_environ"]:
                 continue
+            if args.only_launch is not None and node_name not in args.only_launch:
+                continue
             kill_node(processes[node_name], cfg[node_name], mpdict[node_name])
             if processes[node_name].is_alive():
                 kill_node(processes[node_name], cfg[node_name], mpdict[node_name])
@@ -236,6 +248,8 @@ def do_launch_process(args: argparse.Namespace = None, set_choices=True):
         print(e)
         for i, node_name in enumerate(cfg):
             if node_name in ["global_environ", "global_command", "command_based_environ"]:
+                continue
+            if args.only_launch is not None and node_name not in args.only_launch:
                 continue
             # processes[node_name].terminate()
             kill_node(processes[node_name], cfg[node_name], mpdict[node_name])
