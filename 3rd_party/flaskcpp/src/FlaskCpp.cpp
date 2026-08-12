@@ -1320,13 +1320,13 @@ void FlaskCpp::handleClient2(int clientSocket, const std::string& clientIP)
     if (logger)
     {
         std::ostringstream oss;
-        oss << clientIP << " | " << method << " " << path << " -> " << status;
+        oss << clientIP << " | " << method << " " << url_decode(path) << " -> " << status;
         logger({1, oss.str(), __LINE__, __FILE__, __func__});
     }
     else if (verbose) {
         std::cout << "[\033[32m" << strfnowtime() << "\033[0m] " 
                 << "\033[36m" << clientIP << "\033[0m | "
-                << "\033[34m\033[1m" << method << " \033[0m\033[35m" << path 
+                << "\033[34m\033[1m" << method << " \033[0m\033[35m" << url_decode(path)
                 << "\033[0m -> \033[36m" << status << "\033[0m" << std::endl;
     }
 }

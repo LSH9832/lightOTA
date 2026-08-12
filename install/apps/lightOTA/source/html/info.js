@@ -10,6 +10,12 @@
     const confirmBtn = document.getElementById('confirmBtn');
     const route_prefix = document.getElementById('route_prefix_info').innerText;
 
+    const domainDiv = document.getElementById("domains");
+    let domains = [""];
+    if (domainDiv){
+        domains = domainDiv.innerText.split(":");
+    }
+
     // console.log(route_prefix);
     // const returnBtn = document.getElementById('returnBtn');
 
@@ -24,7 +30,16 @@
         return params.get('name') || '';
     }
 
+    function getDomainNameFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('domain') || '';
+    }
+
     const fileName = getFileNameFromUrl();
+    const domain = getDomainNameFromUrl();
+    if (!domains.includes(domain)) {
+        appendMessage("无法找到域：" + domain, 'error');
+    }
 
     // 追加消息到输出区域
     function appendMessage(text, type) {
@@ -82,7 +97,7 @@
         infoShowArea.innerHTML = '<div class="loading">加载中...</div>';
         appendMessage(`正在获取文件信息: ${fileName}`, 'info');
 
-        fetch(route_prefix + '/api/info?name=' + encodeURIComponent(fileName))
+        fetch(route_prefix + ((domain.startsWith("/") || domain.length==0)?"":"/") + domain + '/api/info?name=' + encodeURIComponent(fileName))
             .then(function (response) {
                 return response.json();
             })
@@ -111,7 +126,7 @@
         updateBtn.disabled = true;
         appendMessage(`正在更新文件: ${fileName}`, 'info');
 
-        fetch(route_prefix + '/api/update?name=' + encodeURIComponent(fileName), {
+        fetch(route_prefix + ((domain.startsWith("/") || domain.length==0)?"":"/") + domain + '/api/update?name=' + encodeURIComponent(fileName), {
             method: 'GET'
         })
         .then(function (response) {
@@ -164,7 +179,7 @@
         deleteBtn.disabled = true;
         appendMessage(`正在删除文件: ${fileName}`, 'info');
 
-        fetch(route_prefix + '/api/deleteFile?name=' + encodeURIComponent(fileName), {
+        fetch(route_prefix + ((domain.startsWith("/") || domain.length==0)?"":"/") + domain + '/api/deleteFile?name=' + encodeURIComponent(fileName), {
             method: 'GET'
         })
         .then(function (response) {

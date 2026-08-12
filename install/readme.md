@@ -176,3 +176,113 @@ ota sysroot pack rk3576 v0.1.0 -i 增加了一些软件更新后所需的新依�
 通过网页打开`http://板端IP:8088/ota/upload.html`即可上传文件，上传成功后自动跳转到ota包详情页，点击左下角`执行更新`按钮即可完成部署。
 
 访问`http://板端IP:8088/ota`即可修改每一个软件的版本，只要老的ota包还在就可以换回来。
+
+
+## 4.多设备OTA
+
+当一个系统内有多个设备，分别运行不同的程序，只有一个设备对外进行OTA服务（以下称为主设备），则使用如下方式进行配置
+
+### 4.1 设备配置
+
+1. 每个设备为一个独立的域，每个设备需要安装本软件，并需要在[自启动配置文件](/install/apps/startup/config/0.ota_server.yaml)中定义当前域的名称与其他所有设备的域的名称
+
+```yaml
+ota_server:
+  work_dir: $OTA_TEST_PATH/apps/lightOTA
+  environ:
+    SERVICE_PORT: 8088                  # 软件运行端口，可根据需求更改
+    OTA_TITLE: 软件OTA管理系统           # 网页显示的标题
+    OTA_ROUTE_PREFIX: /ota              # api前缀，系统内所有域必须相同
+    OTA_DOMAIN: master                  # 定义当前域的名称，每个设备必须不同
+    OTA_DOMAINS: master:slave1:slave2   # 系统内所有的域的名称，用冒号隔开
+    OTA_FOOTER: "Designed By LSH9832"   # 网页显示的页脚
+    OTA_PATH_WHITELIST:                 # 安装路径白名单
+      - /apps
+    LD_LIBRARY_PATH:                    # 软件动态依赖库路径
+      - /apps/lightOTA/lib/$(uname -m)
+  command: bin/$(uname -m)/ota_server $SERVICE_PORT # 软件运行指令
+```
+
+2. 在主设备上安装nginx，创建`/etc/nginx/conf.d/lightota.conf`并编辑如下
+
+```
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    
+    location /ota/slave1 {
+        proxy_pass http://SLAVE1_IP:8088/ota/slave1;
+        proxy_http_version 1.1;
+        proxy_read_timeout 3600;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Real-PORT $remote_port;
+    }
+
+    location /ota/slave2 {
+        proxy_pass http://SLAVE2_IP:8088/ota/slave2;
+        proxy_http_version 1.1;
+        proxy_read_timeout 3600;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Real-PORT $remote_port;
+    }
+
+    location /ota {
+        proxy_pass http://127.0.0.1:8088/ota;
+        proxy_http_version 1.1;
+        proxy_read_timeout 3600;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Real-PORT $remote_port;
+    }
+}
+```
+
+其中SLAVE1_IP和SLAVE2_IP应换成对应设备的实际IP地址，如果端口有修改也需要改为对应的端口值。
+
+同时，在`/etc/nginx/nginx.conf`中保证包含如下配置
+
+```
+http {
+        # 其他配置
+        # ...
+
+        # 关键配置
+        client_max_body_size 1024m;
+        include /etc/nginx/conf.d/*.conf;
+}
+```
+
+访问`http://主设备IP/ota`即可。
+
+### 4.2 OTA打包命令
+
+当系统内存在多个设备时，为确定打包文件上传至对应的域，使用`ota`命令时应修改如下几个使用方法
+
+#### 4.2.1 添加打包软件`ota software add`
+
+```bash
+ota software add 测试软件 test \
+              -e build/test \
+              -l build/libload_by_dl.so \   # 通过dlfcn.h动态载入的动态库无法以查找依赖库的方式被找到，应添加至此
+              -p install/configs:configs /home/user/models:models
+              -r 8
+              -u domain:master   # 添加domain字段及对应的域的名称
+```
+
+#### 4.2.2 软件基础库打包`ota sysroot pack`
+
+```bash
+ota sysroot pack rk3576 v0.1.0 \
+      -i 增加了一些软件更新后所需的新依赖库 \
+      --only-pack-new \
+      -d master  # 添加对应域的名称
+```

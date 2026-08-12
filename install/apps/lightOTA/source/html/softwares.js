@@ -6,6 +6,13 @@
     // const uploadBtn = document.getElementById('uploadBtn');
     const route_prefix = document.getElementById('route_prefix_info').innerText;
 
+    const domainDiv = document.getElementById("domains");
+    let domains = [""];
+    if (domainDiv){
+        domains = domainDiv.innerText.split(":");
+    }
+
+
     // console.log(route_prefix);
 
     let softwareListData = []; // 存储所有软件完整信息，保存时遍历使用
@@ -64,10 +71,13 @@
      * 渲染软件表格，第四列改为下拉选择框
      * @param {Object} softMap 接口返回value字典
      */
-    function renderTable(softMap) {
-        tableBody.innerHTML = "";
-        softwareListData = [];
-        let index = 1;
+    function renderTable(softMap, domain="", clear=true) {
+        if (clear) {
+            tableBody.innerHTML = "";
+            softwareListData = [];
+        }
+        let index = softwareListData.length + 1;
+        
         for (const softName in softMap) {
             const item = softMap[softName];
             const currVer = item.current_version;
@@ -75,7 +85,8 @@
             softwareListData.push({
                 name: softName,
                 current_version: currVer,
-                support_version: supportArr
+                support_version: supportArr,
+                domain: domain
             });
 
             const tr = document.createElement('tr');
@@ -172,7 +183,8 @@
             // 封装单个请求Promise，存入数组
             const singleReqPromise = (async () => {
                 try {
-                    const res = await fetch(route_prefix + `/api/update?name=${encodeURIComponent(selectedFileName)}`);
+                    const res = await fetch(route_prefix + ((softInfo.domain.startsWith("/") || softInfo.domain.length==0)?"":"/") + 
+                                            softInfo.domain + `/api/update?name=${encodeURIComponent(selectedFileName)}`);
                     const data = await res.json();
                     if(data.success){
                         appendMessage(`${softName}：更新成功`,"success");
@@ -212,20 +224,26 @@
         tableBody.innerHTML = '<tr><td colspan="4" class="loading">加载中...</td>';
         if (first) appendMessage("正在获取已安装软件列表", "info");
         else appendMessage("刷新软件列表", "info");
-        try {
-            const resp = await fetch(route_prefix + "/api/getSoftwareList");
-            const data = await resp.json();
-            if (!data.success) {
-                appendMessage(`获取列表失败: ${data.message || "服务返回异常"}`, "error");
-                tableBody.innerHTML = '<tr><td colspan="4" class="loading">加载失败</td>';
-                return;
+        tableBody.innerHTML = "";
+        softwareListData = [];
+        for (const domain of domains) {
+            try {
+                const resp = await fetch(route_prefix + ((domain.startsWith("/") || domain.length==0)?"":"/") + domain + "/api/getSoftwareList");
+                const data = await resp.json();
+                if (!data.success) {
+                    appendMessage(`获取列表失败: ${data.message || "服务返回异常"}`, "error");
+                    tableBody.innerHTML = '<tr><td colspan="4" class="loading">加载失败</td>';
+                    return;
+                }
+                
+                renderTable(data.value || {}, domain, false);
+            } catch (err) {
+                appendMessage(`网络请求失败: ${err.message}`, "error");
+                tableBody.innerHTML = '<tr><td colspan="4" class="loading">网络异常</td>';
             }
-            if (first) appendMessage("软件列表加载完成，可在下拉框选择目标版本后点击保存更改", "success");
-            renderTable(data.value || {});
-        } catch (err) {
-            appendMessage(`网络请求失败: ${err.message}`, "error");
-            tableBody.innerHTML = '<tr><td colspan="4" class="loading">网络异常</td>';
         }
+        if (first) appendMessage("软件列表加载完成，可在下拉框选择目标版本后点击保存更改", "success");
+        
     }
 
     // 页面加载执行

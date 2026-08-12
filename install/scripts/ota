@@ -60,6 +60,7 @@ def get_args():
     sp_sysroot_pack.add_argument("-i", "--intro", type=str, default=None, help="版本说明")
     sp_sysroot_pack.add_argument("-if", "--intro-file", type=str, default=None, help="版本说明文件")
     sp_sysroot_pack.add_argument("--only-pack-new", action="store_true", help="仅打包从上次打包开始更新过的文件")
+    sp_sysroot_pack.add_argument("-d", "--domain", type=str, default="", help="上传域")
 
     sp_sysroot_delete = sp_sysroot_cmd.add_parser("delete", help="delete one sysroot")
     sp_sysroot_delete.add_argument("name", type=str, help="SYSROOT名称")
@@ -68,7 +69,8 @@ def get_args():
     sp_software_cmd = sp_software.add_subparsers(dest="cmd", help="software command")
 
     sp_software_init = sp_software_cmd.add_parser("init")
-    sp_software_init.add_argument("-s", "--system-name", type=str, default=None)
+    sp_software_init.add_argument("-s", "--system-name", type=str, default=None, choices=OTA_SYSROOTS)
+    
 
     sp_software_add = sp_software_cmd.add_parser("add")
     sp_software_add.add_argument("name", type=str, help="软件名称")
@@ -77,6 +79,7 @@ def get_args():
     sp_software_add.add_argument("-l", "--libraries", type=str, nargs="+", default=[], help="必须要打包的动态库文件")
     sp_software_add.add_argument("-p", "--pack", type=str, default=[], nargs="+", help="其他额外需要一起打包的文件/文件夹，比如配置文件等，格式为“<文件/文件夹路径>:<打包后相对于程序运行目录的路径>”（即用冒号隔开）")
     sp_software_add.add_argument("-r", "--rank", type=int, default=None, help="软件自启动优先级（0~9）,如果不在此范围内则视为最低优先级")
+    sp_software_add.add_argument("-u", "--userdata", type=str, nargs="+", default=[], help="打包时向OTA包中添加的用户信息")
 
     sp_software_list = sp_software_cmd.add_parser("list")
     sp_software_list.add_argument("-c", "--cn", action="store_true", help="查看中文名称，默认为英文")
@@ -232,6 +235,10 @@ def getDeps(file_path, check_path: list, sys_root="/", file_dict: dict = None, c
             "unknown": {}
         }
     files = get_dependencies(file_path)
+
+    # if "ld-linux-x86-64.so.2" in files:
+    #     print(file_path)
+    #     time.sleep(500)
     # if check_cwd:
     #     info(files)
     cpath = deepcopy(check_path[1:])
@@ -483,13 +490,14 @@ def sysroot_pack(args):
         return False
     print(f"共{len(lib_files)}个动态库文件")
     otaconfig = {
-        "name": ["通用依赖库"],
+        "name": [f"{(args.domain + '-') if len(args.domain) else ''}通用依赖库"],
         "version": [args.version],
         "root_dir": "/",
         "timestamp": [time.time()],
         "introduction": [("无说明" if args.intro_file is None or not osp.isfile(args.intro_file) else 
                             open(args.intro_file).read().replace("\n","<br>")) 
-                            if args.intro is None else args.intro]
+                            if args.intro is None else args.intro],
+        "domain": args.domain
     }
 
     if args.only_pack_new:
@@ -535,10 +543,10 @@ def software_init(args):
             sys_name = input(f"可选系统\n{available_sys_str}请输入序号：")
         sys_name = OTA_SYSROOTS[int(sys_name)-1]
 
-        cfg = {
-            "sys_name": sys_name,
-            "softwares": {}
-        }
+    cfg = {
+        "sys_name": sys_name,
+        "softwares": {}
+    }
 
     os.makedirs(OTA_SOFT_CFG_PATH)
     with open(OTA_SOFT_CFG_FILE, "w") as f:
@@ -582,8 +590,15 @@ def software_add(args):
         "exes": [osp.abspath(exe) for exe in args.executable_files],
         "libs": [osp.abspath(lib) for lib in args.libraries],
         "pack": pack,
-        "rank": args.rank
+        "rank": args.rank,
+        "userdata": {}
     }
+
+    for kv in args.userdata:
+        k = kv.split(":")[0]
+        v = kv[len(k)+1:]
+        soft_cfg["userdata"][k] = v
+
 
     launch_yaml_str = f"""# -------------------------------- global_environ ---------------------------------
 
@@ -720,7 +735,8 @@ def software_info(args, pack=False, only_new=False, no_extra=False, version=""):
                 if osp.isdir(k):
                     for extra_file in glob(osp.join(k, "**", "*"), recursive=True):
                         if osp.getmtime(extra_file) > last_pack_time or not only_new:
-                            ret["pack"][extra_file] = osp.join(v, osp.basename(extra_file)).replace("\\", "/")
+                            # ret["pack"][extra_file] = osp.join(v, osp.basename(extra_file)).replace("\\", "/")
+                            ret["pack"][extra_file] = osp.abspath(osp.join(v, osp.relpath(extra_file, k))).replace("\\", "/")
                 elif osp.isfile(k):
                     if osp.getmtime(k) > last_pack_time or not only_new:
                         ret["pack"][k] = osp.join(v, osp.basename(k)).replace("\\", "/")
@@ -848,6 +864,9 @@ def software_pack(args):
                               if args.intro is None else args.intro]
         }
 
+        for k, v in cfg["soft_cfg"]["softwares"][args.name].get("userdata", {}).items():
+            otaconfig[k] = v
+
         files_already_pack = [".otaconfig"]
         if len(cfg["pack"]):
             with zipfile.ZipFile(ota_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -888,8 +907,10 @@ if __name__ == "__main__":
     # print(args.mode)
     try:
         eval(f"{args.mode}_{args.cmd}")(args)
-    except:
+    except Exception as e:
+        
         print(usage)
+        # raise
 
 
     # parser = argparse.ArgumentParser()
