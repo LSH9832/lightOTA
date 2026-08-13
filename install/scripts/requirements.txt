@@ -1,0 +1,3 @@
+pyelftools
+paramiko
+requests

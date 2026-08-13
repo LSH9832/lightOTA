@@ -9,6 +9,8 @@ bash setup.bash
 systemctl start apps_auto_start
 ```
 
+或者使用[GUI部署工具](scripts/deploy.py)快速部署
+
 如无反应重启即可
 
 ## 2.软件自启动结构说明
